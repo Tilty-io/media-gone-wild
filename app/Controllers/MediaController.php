@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\DTO\MediaFile;
+use App\DTO\MediaTransformOptions;
 use App\Services\MediaService;
 use CodeIgniter\HTTP\DownloadResponse;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -77,17 +78,33 @@ final class MediaController extends BaseController
      */
     public function catalogue(): ResponseInterface
     {
+        $syncReport = $this->mediaService->syncIdsForCatalogueIfNeeded();
+
+        if (! $syncReport['synced'] && $syncReport['missing'] > 0 && $this->canAutoSyncIds()) {
+            $syncResult = $this->mediaService->syncIdsManifest();
+            $syncReport = [
+                'synced' => $syncResult['added'] > 0,
+                'added' => $syncResult['added'],
+                'missing' => $this->mediaService->countMissingIds(),
+            ];
+        }
+
         $selectedType = $this->request->getGet('type');
         $selectedType = is_string($selectedType) ? strtolower(trim($selectedType)) : 'all';
         $selectedType = in_array($selectedType, [...self::ALLOWED_MEDIA_TYPES, 'all'], true) ? $selectedType : 'all';
 
         $limit = $this->request->getGet('limit');
-        $limit = is_string($limit) && ctype_digit($limit) ? (int) $limit : 500;
+        $limit = is_string($limit) && ctype_digit($limit) ? (int) $limit : 50;
         $limit = max(1, min(500, $limit));
 
         $page = $this->request->getGet('page');
         $page = is_string($page) && ctype_digit($page) ? (int) $page : 1;
         $page = max(1, $page);
+
+        $shuffleSeed = $this->request->getGet('shuffle');
+        $shuffleSeed = is_string($shuffleSeed) && preg_match('/^[a-z0-9]{8,32}$/', $shuffleSeed) === 1
+            ? strtolower($shuffleSeed)
+            : null;
 
         $typesToLoad = $selectedType === 'all' ? self::ALLOWED_MEDIA_TYPES : [$selectedType];
 
@@ -99,21 +116,41 @@ final class MediaController extends BaseController
             foreach ($mediaFiles as $mediaFile) {
                 $catalogueItems[] = [
                     'type' => $mediaType,
+                    'id' => $mediaFile->getId(),
                     'fileName' => $mediaFile->getFileName(),
                     'mimeType' => $mediaFile->getMimeType(),
                     'fileSize' => $mediaFile->getFileSize(),
-                    'url' => site_url('catalogue/media/' . $mediaType . '/' . rawurlencode($mediaFile->getFileName())),
+                    'url' => site_url($mediaType) . '?' . http_build_query(['id' => $mediaFile->getId()]),
                 ];
             }
         }
 
-        usort(
-            $catalogueItems,
-            static fn (array $left, array $right): int => strcmp(
-                $left['type'] . '/' . $left['fileName'],
-                $right['type'] . '/' . $right['fileName'],
-            ),
-        );
+        if ($shuffleSeed !== null) {
+            usort(
+                $catalogueItems,
+                static function (array $left, array $right) use ($shuffleSeed): int {
+                    $leftScore = hash('sha256', $shuffleSeed . '|' . $left['type'] . '|' . $left['id']);
+                    $rightScore = hash('sha256', $shuffleSeed . '|' . $right['type'] . '|' . $right['id']);
+
+                    return strcmp($leftScore, $rightScore);
+                },
+            );
+        } else {
+            usort(
+                $catalogueItems,
+                static fn (array $left, array $right): int => strcmp(
+                    $left['type'] . '/' . $left['id'],
+                    $right['type'] . '/' . $right['id'],
+                ),
+            );
+        }
+
+        $shuffleUrl = site_url('catalogue') . '?' . http_build_query([
+            'type' => $selectedType,
+            'limit' => $limit,
+            'page' => 1,
+            'shuffle' => strtolower(bin2hex(random_bytes(6))),
+        ]);
 
         $totalItems = count($catalogueItems);
         $totalPages = max(1, (int) ceil($totalItems / $limit));
@@ -130,6 +167,11 @@ final class MediaController extends BaseController
                 'currentPage' => $currentPage,
                 'totalPages' => $totalPages,
                 'totalItems' => $totalItems,
+                'shuffleSeed' => $shuffleSeed,
+                'shuffleUrl' => $shuffleUrl,
+                'idsMissingCount' => $syncReport['missing'],
+                'idsWereSynced' => $syncReport['synced'],
+                'idsAddedCount' => $syncReport['added'],
             ]));
     }
 
@@ -152,30 +194,84 @@ final class MediaController extends BaseController
         $decodedFileName = rawurldecode($fileName);
         $media = $this->mediaService->getMediaByFileName($normalizedMediaType, $decodedFileName);
 
-        return $this->createMediaResponse($media);
+        return $this->createMediaResponse($media, $normalizedMediaType);
     }
 
     /**
      * Sert un média binaire pour le type demandé.
      *
+     * Pour les photos, les paramètres de transformation image (`width`, `height`, `fit`,
+     * `extension`, `quality`, `bgcolor`) sont parsés et transmis au service.
+     * Pour les vidéos et les logos, ces paramètres sont ignorés silencieusement.
+     *
      * @param string $mediaType Le type de média à renvoyer.
      */
     private function serveMedia(string $mediaType): ResponseInterface
     {
+        $id = $this->request->getGet('id');
+        $id = is_string($id) ? strtolower(trim($id)) : null;
+
+        if ($id !== null && $id !== '') {
+            $media = $this->mediaService->getMediaById($mediaType, $id);
+
+            if ($media === null && $this->canAutoSyncIds()) {
+                $syncResult = $this->mediaService->syncIdsManifest();
+
+                if ($syncResult['added'] > 0) {
+                    $media = $this->mediaService->getMediaById($mediaType, $id);
+                }
+            }
+
+            return $this->createMediaResponse($media, $mediaType);
+        }
+
         $seed = $this->request->getGet('seed');
         $seed = is_string($seed) ? $seed : null;
 
         $media = $this->mediaService->pickMedia($mediaType, $seed);
 
-        return $this->createMediaResponse($media);
+        return $this->createMediaResponse($media, $mediaType);
+    }
+
+    /**
+     * Extrait et valide les options de transformation depuis les paramètres GET de la requête.
+     *
+     * @return MediaTransformOptions Les options normalisées (peut ne contenir aucune option active).
+     */
+    private function parseTransformOptions(): MediaTransformOptions
+    {
+        return MediaTransformOptions::fromQueryParams([
+            'width'     => $this->getNullableQueryString('width'),
+            'height'    => $this->getNullableQueryString('height'),
+            'fit'       => $this->getNullableQueryString('fit'),
+            'extension' => $this->getNullableQueryString('extension'),
+            'quality'   => $this->getNullableQueryString('quality'),
+            'bgcolor'   => $this->getNullableQueryString('bgcolor'),
+        ]);
+    }
+
+    /**
+     * Retourne un paramètre GET uniquement s'il s'agit bien d'une chaîne scalaire.
+     *
+     * Cela évite de transmettre des tableaux inattendus au DTO de transformation.
+     */
+    private function getNullableQueryString(string $key): ?string
+    {
+        $value = $this->request->getGet($key);
+
+        return is_string($value) ? $value : null;
     }
 
     /**
      * Prépare la réponse binaire d'un média avec ses en-têtes HTTP.
      *
-     * @param MediaFile|null $media Le média résolu à renvoyer.
+     * Si le type est `photo`, les options de transformation sont parsées et appliquées
+     * en cas de besoin. Pour les autres types, aucune transformation n'est effectuée.
+     *
+     * @param MediaFile|null $media     Le média résolu à renvoyer.
+     * @param string         $mediaType Le type du média (`photo`, `video`, `logo`).
      */
-    private function createMediaResponse(?MediaFile $media): ResponseInterface
+    private function createMediaResponse(?MediaFile $media, string $mediaType = ''): ResponseInterface
     {
         if ($media === null) {
             return $this->response
@@ -187,6 +283,21 @@ final class MediaController extends BaseController
             return $this->response
                 ->setStatusCode(500)
                 ->setJSON(['error' => 'Média introuvable ou permissions insuffisantes.']);
+        }
+
+        // Applique les transformations uniquement pour les photos raster.
+        if ($mediaType === 'photo') {
+            $opts = $this->parseTransformOptions();
+
+            if ($opts->hasOptions()) {
+                try {
+                    $media = $this->mediaService->transformMedia($media, $opts);
+                } catch (\Throwable $e) {
+                    return $this->response
+                        ->setStatusCode(500)
+                        ->setJSON(['error' => 'Impossible d\'appliquer la transformation demandée.']);
+                }
+            }
         }
 
         $downloadResponse = $this->response->download($media->getPath(), null, false);
@@ -203,6 +314,32 @@ final class MediaController extends BaseController
             ->setHeader('Content-Length', (string) $media->getFileSize())
             ->setHeader('Cache-Control', 'no-store')
             ->inline();
+    }
+
+    /**
+     * Indique si l'application tourne en environnement développement.
+     */
+    private function isDevelopmentEnvironment(): bool
+    {
+        return defined('ENVIRONMENT') && ENVIRONMENT === 'development';
+    }
+
+    /**
+     * Indique si la requête courante provient d'un hôte local.
+     */
+    private function isLocalRequest(): bool
+    {
+        $host = strtolower($this->request->getUri()->getHost());
+
+        return in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+    }
+
+    /**
+     * Autorise la synchronisation automatique des IDs en développement ou en local.
+     */
+    private function canAutoSyncIds(): bool
+    {
+        return $this->isDevelopmentEnvironment() || $this->isLocalRequest();
     }
 }
 

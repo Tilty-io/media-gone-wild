@@ -146,6 +146,7 @@ vite.config.ts.timestamp-*
 .phpunit.result.cache
 
 # Runtime CodeIgniter 4
+writable/*.txt
 writable/cache/*
 !writable/cache/.htaccess
 !writable/cache/index.html

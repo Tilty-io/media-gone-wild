@@ -92,6 +92,133 @@ final class MediaRepositoryTest extends TestCase
     }
 
     /**
+     * Vérifie qu'un identifiant stable résout exactement le média attendu.
+     */
+    public function testFindByIdReturnsMatchingFileForKnownMedia(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory);
+
+        $filePath = $photoDirectory . DIRECTORY_SEPARATOR . 'sample.jpg';
+        file_put_contents($filePath, 'sample');
+        $this->writeIdsManifest($baseDirectory, [
+            'abc123def456' => 'photo/sample.jpg',
+        ]);
+
+        $repository = new MediaRepository($baseDirectory);
+
+        self::assertSame($filePath, $repository->findById('photo', 'abc123def456'));
+    }
+
+    /**
+     * Vérifie qu'un ID connu mais d'un autre type ne fuite jamais vers le mauvais endpoint.
+     */
+    public function testFindByIdReturnsNullForWrongType(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        mkdir($baseDirectory . DIRECTORY_SEPARATOR . 'photo');
+        $logoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'logo';
+        mkdir($logoDirectory);
+
+        file_put_contents($logoDirectory . DIRECTORY_SEPARATOR . 'brand.svg', '<svg>brand</svg>');
+        $this->writeIdsManifest($baseDirectory, [
+            'def456abc123' => 'logo/brand.svg',
+        ]);
+
+        $repository = new MediaRepository($baseDirectory);
+
+        self::assertNull($repository->findById('photo', 'def456abc123'));
+    }
+
+    /**
+     * Vérifie que la liste enrichie expose les IDs définis dans le manifeste.
+     */
+    public function testListEntriesReturnsIdsDefinedInManifest(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $videoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'video';
+        mkdir($videoDirectory);
+
+        file_put_contents($videoDirectory . DIRECTORY_SEPARATOR . 'alpha.mp4', 'alpha');
+        file_put_contents($videoDirectory . DIRECTORY_SEPARATOR . 'beta.mp4', 'beta');
+        $this->writeIdsManifest($baseDirectory, [
+            '111aaa222bbb' => 'video/alpha.mp4',
+            '333ccc444ddd' => 'video/beta.mp4',
+        ]);
+
+        $repository = new MediaRepository($baseDirectory);
+        $entries = $repository->listEntries('video');
+
+        self::assertCount(2, $entries);
+        self::assertSame('111aaa222bbb', $entries[0]['id']);
+        self::assertSame('333ccc444ddd', $entries[1]['id']);
+    }
+
+    /**
+     * Vérifie que la synchronisation ajoute les IDs manquants sans modifier ceux déjà présents.
+     */
+    public function testSyncIdsManifestAddsMissingMediaWithoutChangingExistingIds(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'a.jpg', 'a');
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'b.jpg', 'b');
+        $this->writeIdsManifest($baseDirectory, [
+            'abc123def456' => 'photo/a.jpg',
+        ]);
+
+        $repository = new MediaRepository($baseDirectory);
+        $result = $repository->syncIdsManifest();
+
+        self::assertSame(1, $result['added']);
+        self::assertSame(2, $result['total']);
+        self::assertTrue($result['changed']);
+
+        $manifest = $this->readIdsManifest($baseDirectory);
+        self::assertSame('photo/a.jpg', $manifest['abc123def456']);
+
+        $addedEntry = array_filter(
+            $manifest,
+            static fn (string $path, string $id): bool => $id !== 'abc123def456' && $path === 'photo/b.jpg',
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        self::assertCount(1, $addedEntry);
+        self::assertMatchesRegularExpression('/^[a-z0-9]{12,}$/', (string) array_key_first($addedEntry));
+    }
+
+    /**
+     * Vérifie que le mode dry-run n'écrit pas le manifeste sur disque.
+     */
+    public function testSyncIdsManifestDryRunDoesNotWriteFile(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $videoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'video';
+        mkdir($videoDirectory);
+
+        file_put_contents($videoDirectory . DIRECTORY_SEPARATOR . 'x.mp4', 'x');
+        file_put_contents($videoDirectory . DIRECTORY_SEPARATOR . 'y.mp4', 'y');
+        $this->writeIdsManifest($baseDirectory, [
+            '111aaa222bbb' => 'video/x.mp4',
+        ]);
+
+        $manifestPath = $baseDirectory . DIRECTORY_SEPARATOR . 'ids.json';
+        $before = file_get_contents($manifestPath);
+
+        $repository = new MediaRepository($baseDirectory);
+        $result = $repository->syncIdsManifest(true);
+
+        $after = file_get_contents($manifestPath);
+
+        self::assertSame(1, $result['added']);
+        self::assertTrue($result['changed']);
+        self::assertSame($before, $after);
+    }
+
+    /**
      * Vérifie que l'ajout d'un fichier ne remappe pas massivement les seeds existants.
      *
      * Le comportement attendu est qu'une majorité de seeds conservent leur média,
@@ -166,6 +293,42 @@ final class MediaRepositoryTest extends TestCase
         });
 
         return $basePath;
+    }
+
+    /**
+     * Écrit un manifeste minimal d'IDs pour les scénarios qui exigent des correspondances exactes.
+     *
+     * @param array<string, string> $manifest Les associations `id => chemin relatif` à écrire.
+     */
+    private function writeIdsManifest(string $baseDirectory, array $manifest): void
+    {
+        file_put_contents(
+            $baseDirectory . DIRECTORY_SEPARATOR . 'ids.json',
+            json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL,
+        );
+    }
+
+    /**
+     * Lit le manifeste JSON et retourne les associations `id => chemin relatif`.
+     *
+     * @return array<string, string>
+     */
+    private function readIdsManifest(string $baseDirectory): array
+    {
+        $content = file_get_contents($baseDirectory . DIRECTORY_SEPARATOR . 'ids.json');
+
+        if (! is_string($content)) {
+            self::fail('Impossible de lire ids.json pendant le test.');
+        }
+
+        $decoded = json_decode($content, true);
+
+        if (! is_array($decoded)) {
+            self::fail('ids.json doit contenir un objet JSON valide pendant le test.');
+        }
+
+        /** @var array<string, string> $decoded */
+        return $decoded;
     }
 }
 

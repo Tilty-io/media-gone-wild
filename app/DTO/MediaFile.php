@@ -13,6 +13,7 @@ final readonly class MediaFile
      * Construit la description complète d'un média résolu par l'application.
      *
      * @param string $path Le chemin absolu du fichier sur le disque.
+     * @param string $id L'identifiant stable du média, sans extension.
      * @param string $fileName Le nom de fichier sûr à exposer au navigateur.
      * @param string $mimeType Le type MIME calculé pour la réponse HTTP.
      * @param int $fileSize La taille du fichier en octets.
@@ -20,6 +21,7 @@ final readonly class MediaFile
      */
     public function __construct(
         private string $path,
+        private string $id,
         private string $fileName,
         private string $mimeType,
         private int $fileSize,
@@ -33,6 +35,14 @@ final readonly class MediaFile
     public function getPath(): string
     {
         return $this->path;
+    }
+
+    /**
+     * Retourne l'identifiant stable du média.
+     */
+    public function getId(): string
+    {
+        return $this->id;
     }
 
     /**
