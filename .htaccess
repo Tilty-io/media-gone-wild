@@ -1,8 +1,15 @@
+# Active le moteur de réécriture Apache.
 RewriteEngine On
 
+# Si la requête cible déjà un fichier ou un dossier réel, Apache le sert directement.
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
 
-RewriteRule ^ index.php [QSA,L]
+# Si la ressource existe dans /public, on la sert depuis ce dossier (assets, favicon, etc.).
+RewriteCond public/$1 -f [OR]
+RewriteCond public/$1 -d
+RewriteRule ^(.*)$ public/$1 [L]
 
+# Tout le reste est envoyé au front controller index.php (bootstrap CodeIgniter 4).
+RewriteRule ^ index.php [QSA,L]

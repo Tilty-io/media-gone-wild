@@ -2,49 +2,32 @@
 
 declare(strict_types=1);
 
-$autoloadPath = __DIR__ . '/vendor/autoload.php';
-if (is_file($autoloadPath)) {
-	require_once $autoloadPath;
+use CodeIgniter\Boot;
+use Config\Paths;
+
+// Vérifie rapidement la version de PHP avant de lancer le framework.
+$minPhpVersion = '8.2';
+if (version_compare(PHP_VERSION, $minPhpVersion, '<')) {
+	header('HTTP/1.1 503 Service Unavailable', true, 503);
+	echo sprintf(
+		'Votre version de PHP doit être supérieure ou égale à %s. Version actuelle : %s',
+		$minPhpVersion,
+		PHP_VERSION,
+	);
+	exit(1);
 }
 
-$routerClass = 'MediaGoneWild\\Router';
-$repositoryClass = 'MediaGoneWild\\MediaRepository';
+// Le projet utilise la racine actuelle comme front controller en attendant la migration complète vers `public/`.
+define('FCPATH', __DIR__ . DIRECTORY_SEPARATOR);
 
-if (!class_exists($routerClass) || !class_exists($repositoryClass)) {
-	require_once __DIR__ . '/src/Router.php';
-	require_once __DIR__ . '/src/MediaRepository.php';
+if (getcwd() . DIRECTORY_SEPARATOR !== FCPATH) {
+	chdir(FCPATH);
 }
 
-$uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-$uriPath = is_string($uriPath) ? $uriPath : '/';
+require FCPATH . 'app/Config/Paths.php';
 
-$router = new MediaGoneWild\Router();
-$mediaType = $router->resolveMediaType($uriPath);
+$paths = new Paths();
 
-if ($mediaType === null) {
-	http_response_code(404);
-	header('Content-Type: application/json; charset=utf-8');
-	echo json_encode(['error' => 'Endpoint introuvable. Utilisez /photo, /video ou /logo.']);
-	exit;
-}
+require $paths->systemDirectory . '/Boot.php';
 
-$seed = isset($_GET['seed']) && is_string($_GET['seed']) ? trim($_GET['seed']) : null;
-$seed = $seed !== '' ? $seed : null;
-
-$repository = new MediaGoneWild\MediaRepository(__DIR__ . '/media');
-$mediaPath = $repository->pick($mediaType, $seed);
-
-if ($mediaPath === null) {
-	http_response_code(404);
-	header('Content-Type: application/json; charset=utf-8');
-	echo json_encode(['error' => 'Aucun média disponible pour ce type.']);
-	exit;
-}
-
-$finfo = new finfo(FILEINFO_MIME_TYPE);
-$mimeType = $finfo->file($mediaPath) ?: 'application/octet-stream';
-
-header('Content-Type: ' . $mimeType);
-header('Cache-Control: no-store');
-readfile($mediaPath);
-
+exit(Boot::bootWeb($paths));

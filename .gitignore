@@ -141,3 +141,20 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Cache PHPUnit
+.phpunit.result.cache
+
+# Runtime CodeIgniter 4
+writable/cache/*
+!writable/cache/.htaccess
+!writable/cache/index.html
+writable/debugbar/*
+!writable/debugbar/index.html
+writable/logs/*
+!writable/logs/index.html
+writable/session/*
+!writable/session/index.html
+writable/uploads/*
+!writable/uploads/index.html
+
