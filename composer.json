@@ -1,0 +1,15 @@
+{
+  "name": "tilty/media-gone-wild",
+  "description": "API de médias aléatoires (photos, logos, vidéos)",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "intervention/image": "^4.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "MediaGoneWild\\": "src/"
+    }
+  }
+}
+
