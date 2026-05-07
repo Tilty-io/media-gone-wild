@@ -16,7 +16,55 @@ class App extends BaseConfig
      *
      * E.g., http://example.com/
      */
-    public string $baseURL = 'http://localhost/github/media-gone-wild/';
+    public string $baseURL = '';
+
+    /**
+     * Initialise la configuration applicative et résout dynamiquement la base URL.
+     *
+     * En contexte HTTP, la résolution se base sur le host courant.
+     * En CLI/tests, un fallback local stable est utilisé.
+     */
+    public function __construct()
+    {
+        parent::__construct();
+
+        $host = $this->resolveRequestHost();
+
+        if ($host === null) {
+            $this->baseURL = 'http://localhost/github/media-gone-wild/';
+
+            return;
+        }
+
+        $isLocalHost = $host === 'localhost'
+            || $host === '127.0.0.1'
+            || $host === '::1';
+
+        $this->baseURL = $isLocalHost
+            ? 'http://localhost/github/media-gone-wild/'
+            : 'https://media-gone-wild.tilty.io/';
+    }
+
+    /**
+     * Retourne le host de la requête HTTP courante, ou null hors contexte web.
+     */
+    private function resolveRequestHost(): ?string
+    {
+        if (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg') {
+            return null;
+        }
+
+        $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? null;
+
+        if (! is_string($host) || $host === '') {
+            return null;
+        }
+
+        // Nettoie un éventuel port (ex: localhost:8080) et normalise en minuscules.
+        $host = strtolower(trim(explode(':', $host, 2)[0]));
+
+        return $host !== '' ? $host : null;
+    }
 
     /**
      * Allowed Hostnames in the Site URL other than the hostname in the baseURL.

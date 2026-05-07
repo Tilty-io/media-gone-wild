@@ -248,7 +248,7 @@
                                 src=""
                                 alt="Aperçu de l'image générée"
                                 loading="lazy"
-                                class="hidden h-auto w-auto max-w-none"
+                                class="h-auto w-auto max-w-none"
                             >
                             <div id="photo-transform-preview-placeholder" class="flex min-h-56 min-w-full items-center justify-center px-4 text-center text-sm opacity-70">
                                 L'aperçu s'affiche ici dès qu'un ID photo valide est renseigné.
@@ -457,7 +457,18 @@
                     return;
                 }
 
-                var baseUrl = builder.getAttribute('data-base-url') || '';
+                var baseUrl = (function () {
+                    // Construit toujours l'endpoint photo sur l'hôte courant
+                    // pour éviter les URLs localhost injectées par une baseURL serveur inadaptée.
+                    var currentPath = window.location.pathname || '/catalogue';
+                    var photoPath = currentPath.replace(/\/catalogue(?:\/.*)?$/, '/photo');
+
+                    if (photoPath === currentPath) {
+                        photoPath = '/photo';
+                    }
+
+                    return window.location.origin + photoPath;
+                })();
                 var defaultId = builder.getAttribute('data-default-id') || '';
                 var output = document.getElementById('photo-transform-url');
                 var status = document.getElementById('photo-transform-status');
@@ -582,6 +593,7 @@
                 }
 
                 function showPreviewPlaceholder(message) {
+                    previewImage.removeAttribute('src');
                     previewImage.classList.add('hidden');
                     previewPlaceholder.classList.remove('hidden');
                     previewPlaceholder.textContent = message;
@@ -590,7 +602,6 @@
 
                 function refreshPreview(url, id) {
                     if (id === '') {
-                        previewImage.removeAttribute('src');
                         showPreviewPlaceholder('Ajoute un ID photo pour afficher l\'aperçu.');
                         return;
                     }
@@ -599,8 +610,12 @@
                     previewImage.dataset.previewToken = token;
 
                     previewImage.classList.add('hidden');
+                    previewPlaceholder.classList.remove('hidden');
                     previewPlaceholder.textContent = 'Chargement de l\'aperçu...';
                     previewStatus.textContent = 'Chargement de l\'aperçu...';
+
+                    // Rend l'image visible pendant le chargement pour éviter un état bloqué en display none.
+                    previewImage.classList.remove('hidden');
 
                     previewImage.onload = function () {
                         if (previewImage.dataset.previewToken !== token) {
@@ -685,10 +700,11 @@
                     }
 
                     var url = baseUrl + (params.toString() ? '?' + params.toString() : '');
+                    var absoluteUrl = new URL(url, window.location.href).toString();
 
-                    output.textContent = url;
-                    openLink.href = url;
-                    refreshPreview(url, id);
+                    output.textContent = absoluteUrl;
+                    openLink.href = absoluteUrl;
+                    refreshPreview(absoluteUrl, id);
                 }
 
                 builder.addEventListener('input', function () {
