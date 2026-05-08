@@ -358,7 +358,7 @@
                                         class="btn btn-primary btn-sm js-use-photo-transform"
                                         data-photo-id="<?= esc($item['id']) ?>"
                                         data-photo-name="<?= esc($item['fileName']) ?>"
-                                    >Configurer transformation</button>
+                                    >Transformer</button>
                                 <?php endif; ?>
                             </div>
 
@@ -602,7 +602,7 @@
 
                 function refreshPreview(url, id) {
                     if (id === '') {
-                        showPreviewPlaceholder('Ajoute un ID photo pour afficher l'aperçu.');
+                        showPreviewPlaceholder('Ajoute un ID photo pour afficher l\'aperçu.');
                         return;
                     }
 
