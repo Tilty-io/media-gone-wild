@@ -7,6 +7,10 @@ Pour les messages de commit, suis les instructions définies dans #file:git-comm
 ## Langue et accents
 Respecte toujours les accents en français dans les exemples et dans les commentaires de code. N'écris pas de texte français sans accents.
 
+## Textes visibles par l'utilisateur
+Dans les textes visibles par l'utilisateur final (pages, interfaces, messages, libellés, documentation publique), ne mentionne JAMAIS les prompts internes, les demandes de l'utilisateur, la conversation en cours, ni les sources d'inspiration utilisées pour concevoir une interface ou une fonctionnalité.
+Le résultat final doit toujours paraître natif au produit, sans exposer le contexte de travail, les comparaisons externes ni les coulisses de conception.
+
 
 
 
