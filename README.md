@@ -42,7 +42,7 @@ ou
 
 Les seeds permettent d'obtenir des résultats aléatoires mais reproductibles. En utilisant le même seed, vous obtiendrez toujours le même résultat.
 
-## IDs exacts
+## IDs
 
 Chaque média dispose d'un identifiant stable, unique, sans extension, composé uniquement de caractères `a-z` et `0-9`.
 
@@ -65,15 +65,15 @@ En production distante, le catalogue affiche une alerte et n'écrit rien automat
 En plus, en `development` ou en local (`localhost`/`127.0.0.1`/`::1`), si une requête `?id=...` ne trouve pas le média,
 l'API tente une synchronisation automatique (`media:sync-ids`) puis retente la résolution de cet ID une fois.
 
-#### Une `photo` exacte avec un ID connu
+#### Une `photo` avec un ID connu
 
 `https://media-gone-wild.tilty.io/photo?id=abc123def456`
 
-#### Une `video` exacte avec un ID connu
+#### Une `video` avec un ID connu
 
 `https://media-gone-wild.tilty.io/video?id=def456abc123`
 
-#### Un `logo` exact avec un ID connu
+#### Un `logo` avec un ID connu
 
 `https://media-gone-wild.tilty.io/logo?id=789abc123def`
 
@@ -212,4 +212,3 @@ La documentation de synchronisation vers un serveur mutualisé est disponible ic
 Un prompt système prêt à copier pour expliquer l'usage réel actuel de l'API à des agents est disponible ici :
 
 `docs/explain-media-gone-wild-to-agents.md`
-

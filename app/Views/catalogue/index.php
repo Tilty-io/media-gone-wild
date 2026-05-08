@@ -46,7 +46,7 @@
     ));
 
     /**
-     * Construit une URL de transformation photo à partir d'un ID exact.
+     * Construit une URL de transformation photo à partir d'un ID.
      *
      * @param string $id L'identifiant stable de la photo.
      * @param array<string, scalar|null> $params Les paramètres de transformation à ajouter.
@@ -346,7 +346,7 @@
                             </p>
 
                             <div class="rounded-lg border border-base-300 bg-base-200 px-3 py-2">
-                                <p class="text-[11px] uppercase tracking-wide opacity-70">ID exact</p>
+                                <p class="text-[11px] uppercase tracking-wide opacity-70">ID</p>
                                 <p class="mt-1 font-mono text-sm text-success"><?= esc($item['id']) ?></p>
                             </div>
 
@@ -602,7 +602,7 @@
 
                 function refreshPreview(url, id) {
                     if (id === '') {
-                        showPreviewPlaceholder('Ajoute un ID photo pour afficher l\'aperçu.');
+                        showPreviewPlaceholder('Ajoute un ID photo pour afficher l'aperçu.');
                         return;
                     }
 
