@@ -20,7 +20,7 @@ $initialModalUrl = site_url('photo') . '?' . http_build_query(['id' => $defaultD
 
         <form id="home-photo-transform-builder" class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <label class="form-control xl:col-span-2">
-                <span class="label-text text-sm">ID photo exact</span>
+                <span class="label-text text-sm">ID</span>
                 <input id="home-photo-transform-id" name="id" type="text" value="<?= esc($defaultDemoPhotoId) ?>" class="input input-bordered font-mono">
             </label>
 

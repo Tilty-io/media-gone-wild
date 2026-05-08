@@ -58,6 +58,19 @@ final class MediaController extends BaseController
     }
 
     /**
+     * Retourne une photo aléatoire dans le format spécifié par l'extension de l'URL.
+     *
+     * Exemple : `/photo.webp?seed=robert&width=800` sert une photo en WebP.
+     * L'extension de l'URL est prioritaire sur le paramètre `?extension=` en query string.
+     *
+     * @param string $extension L'extension de format demandée (jpg, png, webp, gif).
+     */
+    public function photoWithExtension(string $extension): ResponseInterface
+    {
+        return $this->serveMedia('photo', strtolower(trim($extension)));
+    }
+
+    /**
      * Retourne une vidéo aléatoire.
      */
     public function video(): ResponseInterface
@@ -66,9 +79,36 @@ final class MediaController extends BaseController
     }
 
     /**
+     * Retourne une vidéo aléatoire via une URL avec extension.
+     *
+     * L'extension est ignorée pour les vidéos (aucune transformation n'est applicable).
+     *
+     * @param string $extension L'extension présente dans l'URL (non utilisée pour les vidéos).
+     */
+    public function videoWithExtension(string $extension): ResponseInterface
+    {
+        return $this->serveMedia('video');
+    }
+
+    /**
      * Retourne un logo aléatoire.
      */
     public function logo(): ResponseInterface
+    {
+        return $this->serveMedia('logo');
+    }
+
+    /**
+     * Retourne un logo aléatoire via une URL avec extension.
+     *
+     * Les logos sont des SVG. La transformation raster (PNG, JPG…) n'est pas supportée
+     * avec le driver GD : GD ne sait pas décoder les SVG. Avec Imagick + librsvg ce serait
+     * possible, mais ces dépendances système ne sont pas disponibles sur ce serveur.
+     * L'extension est donc ignorée silencieusement et le SVG est servi tel quel.
+     *
+     * @param string $extension L'extension présente dans l'URL (non utilisée pour les logos).
+     */
+    public function logoWithExtension(string $extension): ResponseInterface
     {
         return $this->serveMedia('logo');
     }
@@ -202,11 +242,14 @@ final class MediaController extends BaseController
      *
      * Pour les photos, les paramètres de transformation image (`width`, `height`, `fit`,
      * `extension`, `quality`, `bgcolor`) sont parsés et transmis au service.
+     * L'extension issue de l'URL (ex. `/photo.webp`) est utilisée comme format par défaut
+     * si le paramètre `extension` n'est pas fourni en query string.
      * Pour les vidéos et les logos, ces paramètres sont ignorés silencieusement.
      *
-     * @param string $mediaType Le type de média à renvoyer.
+     * @param string      $mediaType    Le type de média à renvoyer.
+     * @param string|null $urlExtension L'extension extraite de l'URL, ou null si absente.
      */
-    private function serveMedia(string $mediaType): ResponseInterface
+    private function serveMedia(string $mediaType, ?string $urlExtension = null): ResponseInterface
     {
         $id = $this->request->getGet('id');
         $id = is_string($id) ? strtolower(trim($id)) : null;
@@ -222,29 +265,37 @@ final class MediaController extends BaseController
                 }
             }
 
-            return $this->createMediaResponse($media, $mediaType);
+            return $this->createMediaResponse($media, $mediaType, $urlExtension);
         }
-
         $seed = $this->request->getGet('seed');
         $seed = is_string($seed) ? $seed : null;
 
         $media = $this->mediaService->pickMedia($mediaType, $seed);
 
-        return $this->createMediaResponse($media, $mediaType);
+        return $this->createMediaResponse($media, $mediaType, $urlExtension);
     }
 
     /**
      * Extrait et valide les options de transformation depuis les paramètres GET de la requête.
      *
+     * L'extension issue de l'URL (ex. `/photo.webp`) prend la priorité sur le paramètre
+     * `?extension=` en query string. Le paramètre query n'est utilisé qu'en l'absence
+     * d'extension dans l'URL.
+     *
+     * @param string|null $urlExtension Extension extraite de l'URL, ou null si absente.
+     *
      * @return MediaTransformOptions Les options normalisées (peut ne contenir aucune option active).
      */
-    private function parseTransformOptions(): MediaTransformOptions
+    private function parseTransformOptions(?string $urlExtension = null): MediaTransformOptions
     {
+        // L'extension de l'URL est prioritaire ; le paramètre ?extension= sert de repli.
+        $effectiveExtension = $urlExtension ?? $this->getNullableQueryString('extension');
+
         return MediaTransformOptions::fromQueryParams([
             'width'     => $this->getNullableQueryString('width'),
             'height'    => $this->getNullableQueryString('height'),
             'fit'       => $this->getNullableQueryString('fit'),
-            'extension' => $this->getNullableQueryString('extension'),
+            'extension' => $effectiveExtension,
             'quality'   => $this->getNullableQueryString('quality'),
             'bgcolor'   => $this->getNullableQueryString('bgcolor'),
         ]);
@@ -266,13 +317,19 @@ final class MediaController extends BaseController
      * Prépare la réponse binaire d'un média avec ses en-têtes HTTP.
      *
      * Si le type est `photo`, les options de transformation sont parsées et appliquées
-     * en cas de besoin. Pour les autres types, aucune transformation n'est effectuée.
+     * en cas de besoin. L'extension de l'URL est utilisée comme format par défaut si
+     * le paramètre `extension` n'est pas fourni en query string.
+     * Pour les autres types, aucune transformation n'est effectuée.
      *
-     * @param MediaFile|null $media     Le média résolu à renvoyer.
-     * @param string         $mediaType Le type du média (`photo`, `video`, `logo`).
+     * @param MediaFile|null $media         Le média résolu à renvoyer.
+     * @param string         $mediaType     Le type du média (`photo`, `video`, `logo`).
+     * @param string|null    $urlExtension  L'extension extraite de l'URL, ou null si absente.
      */
-    private function createMediaResponse(?MediaFile $media, string $mediaType = ''): ResponseInterface
-    {
+    private function createMediaResponse(
+        ?MediaFile $media,
+        string $mediaType = '',
+        ?string $urlExtension = null,
+    ): ResponseInterface {
         if ($media === null) {
             return $this->response
                 ->setStatusCode(404)
@@ -287,7 +344,7 @@ final class MediaController extends BaseController
 
         // Applique les transformations uniquement pour les photos raster.
         if ($mediaType === 'photo') {
-            $opts = $this->parseTransformOptions();
+            $opts = $this->parseTransformOptions($urlExtension);
 
             if ($opts->hasOptions()) {
                 try {

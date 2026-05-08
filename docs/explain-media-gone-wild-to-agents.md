@@ -9,17 +9,25 @@ https://media-gone-wild.tilty.io/
 Endpoints disponibles :
 - GET https://media-gone-wild.tilty.io/
 - GET https://media-gone-wild.tilty.io/photo
+- GET https://media-gone-wild.tilty.io/photo.jpg
+- GET https://media-gone-wild.tilty.io/photo.png
+- GET https://media-gone-wild.tilty.io/photo.webp
+- GET https://media-gone-wild.tilty.io/photo.gif
 - GET https://media-gone-wild.tilty.io/video
 - GET https://media-gone-wild.tilty.io/logo
 
 Ce que signifient les endpoints :
 - `/photo` = une photo aléatoire issue de la collection photo du projet
+- `/photo.jpg` = une photo aléatoire convertie en JPEG (équivalent à `/photo?extension=jpg`)
+- `/photo.png` = une photo aléatoire convertie en PNG
+- `/photo.webp` = une photo aléatoire convertie en WebP
+- `/photo.gif` = une photo aléatoire convertie en GIF
 - `/video` = une vidéo aléatoire issue de la collection vidéo du projet
 - `/logo` = un logo aléatoire issu de la collection de logos du projet
 - les mêmes endpoints acceptent aussi `?id=...` pour cibler un média exact
 
 Formats actuellement renvoyés :
-- `/photo` renvoie actuellement un fichier image JPEG par défaut, mais peut aussi renvoyer `jpg`, `png`, `webp` ou `gif` si le paramètre `extension` est utilisé
+- `/photo` renvoie actuellement un fichier image JPEG par défaut, mais peut aussi renvoyer `jpg`, `png`, `webp` ou `gif` si le paramètre `extension` est utilisé ou si l'extension est précisée dans l'URL
 - `/video` renvoie actuellement un fichier vidéo MP4
 - `/logo` renvoie actuellement un fichier image SVG
 
@@ -33,8 +41,21 @@ Paramètres supportés :
 - quality (photo uniquement) = `1` à `100`
 - bgcolor (photo uniquement) = hex 6 chars, hex 8 chars `RRGGBBAA` ou `transparent`
 
+Règles pour l'extension de format photo :
+- L'extension peut être précisée dans l'URL : `/photo.webp?seed=robert` ou via le paramètre query : `/photo?extension=webp&seed=robert`.
+- L'extension de l'URL est prioritaire sur le paramètre `?extension=` si les deux sont présents.
+- L'extension de l'URL et le paramètre `extension` sont strictement réservés aux photos. Pour `/video` et `/logo`, ces informations sont ignorées silencieusement.
+
+Note technique — logos SVG :
+- Les logos sont des fichiers SVG. La transformation raster (conversion PNG, JPG, redimensionnement…) n'est pas supportée.
+- Le driver GD (PHP) ne sait pas décoder les SVG. Avec Imagick + librsvg ce serait possible, mais ces dépendances système ne sont pas disponibles.
+- `/logo.png`, `/logo.jpg`, etc. servent le SVG original sans transformation.
+
 Exemples :
 - https://media-gone-wild.tilty.io/photo
+- https://media-gone-wild.tilty.io/photo.jpg?id=abc123def456
+- https://media-gone-wild.tilty.io/photo.webp?seed=robert&width=800&height=600&fit=cover
+- https://media-gone-wild.tilty.io/photo.png?seed=demo&width=200&height=200&fit=contain&bgcolor=ffffff00
 - https://media-gone-wild.tilty.io/photo?id=abc123def456
 - https://media-gone-wild.tilty.io/photo?seed=robert
 - https://media-gone-wild.tilty.io/photo?seed=robert&width=800&height=600&fit=cover

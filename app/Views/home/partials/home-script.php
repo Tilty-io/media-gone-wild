@@ -335,14 +335,27 @@
         function parseApiMediaUrl(url) {
             try {
                 var parsed = new URL(url, window.location.href);
-                var endpointMatch = parsed.pathname.match(/\/(photo|video|logo)\/?$/);
+                // Reconnaît `/photo`, `/photo.jpg`, `/video.mp4`, etc.
+                var endpointMatch = parsed.pathname.match(/\/(photo|video|logo)(?:\.([a-z]+))?\/?$/);
 
                 if (!endpointMatch) {
                     return null;
                 }
 
+                var urlExtension = endpointMatch[2] || null;
                 var extractedParams = {};
-                ['width', 'height', 'fit', 'extension', 'quality', 'bgcolor'].forEach(function (name) {
+
+                // L'extension du chemin est prioritaire sur ?extension=
+                if (urlExtension) {
+                    extractedParams.extension = urlExtension;
+                } else {
+                    var extFromQuery = parsed.searchParams.get('extension');
+                    if (extFromQuery !== null && extFromQuery !== '') {
+                        extractedParams.extension = extFromQuery;
+                    }
+                }
+
+                ['width', 'height', 'fit', 'quality', 'bgcolor'].forEach(function (name) {
                     var value = parsed.searchParams.get(name);
 
                     if (value !== null && value !== '') {
@@ -394,10 +407,7 @@
                 params.fit = fit;
             }
 
-            if (extension !== '') {
-                params.extension = extension;
-            }
-
+            // L'extension est intégrée dans le chemin (ex. photo.jpg), pas en query string.
             if (quality !== '' && quality !== '85') {
                 params.quality = quality;
             }
@@ -415,7 +425,9 @@
                 search.set(key, String(params[key]));
             });
 
-            var url = basePhotoPath + (search.toString() ? '?' + search.toString() : '');
+            // Le format de sortie est encodé dans l'URL elle-même : /photo.jpg, /photo.webp…
+            var effectivePath = extension !== '' ? basePhotoPath + '.' + extension : basePhotoPath;
+            var url = effectivePath + (search.toString() ? '?' + search.toString() : '');
             modalUrlLink.href = url;
             modalUrlLink.textContent = url;
             modalPreview.src = url;
