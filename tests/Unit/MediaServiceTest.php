@@ -210,6 +210,109 @@ final class MediaServiceTest extends TestCase
     }
 
     /**
+     * Vérifie que la version de pipeline est intégrée à la clé de cache.
+     */
+    public function testTransformMediaCacheKeyIncludesPipelineVersion(): void
+    {
+        if (! extension_loaded('gd')) {
+            self::markTestSkipped('Extension GD requise pour les tests de transformation.');
+        }
+
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDir      = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDir);
+
+        $this->createTestJpeg($photoDir . DIRECTORY_SEPARATOR . 'versioned_cache.jpg', 24, 24);
+        $this->writeIdsManifest($baseDirectory, [
+            'facefaceface' => 'photo/versioned_cache.jpg',
+        ]);
+
+        $service = new MediaService(new MediaRepository($baseDirectory));
+        $media   = $service->getMediaById('photo', 'facefaceface');
+        self::assertNotNull($media);
+
+        $opts = MediaTransformOptions::fromQueryParams([
+            'width' => '12',
+            'quality' => '70',
+        ]);
+
+        $transformed = $service->transformMedia($media, $opts);
+
+        $reflection = new \ReflectionClass(MediaService::class);
+        $cacheVersion = (string) $reflection->getConstant('TRANSFORM_CACHE_VERSION');
+        $expectedBaseName = hash('sha256', $cacheVersion . '|' . $opts->toCacheKey($media->getId()));
+
+        // Vérifie que le nom de fichier correspond au hash attendu.
+        self::assertSame($expectedBaseName, pathinfo($transformed->getPath(), PATHINFO_FILENAME));
+
+        // Vérifie que le chemin inclut le sous-dossier de version et le sous-dossier d'ID.
+        $normalizedPath = str_replace('\\', '/', $transformed->getPath());
+        self::assertStringContainsString('/' . $cacheVersion . '/', $normalizedPath);
+        self::assertStringContainsString('/' . $media->getId() . '/', $normalizedPath);
+    }
+
+    /**
+     * Vérifie que `bgcolor` sert de fond de composition même en `fit=contain`,
+     * y compris derrière les zones transparentes de l'image source.
+     */
+    public function testTransformMediaContainComposesOnBgcolorBackground(): void
+    {
+        if (! extension_loaded('gd')) {
+            self::markTestSkipped('Extension GD requise pour les tests de transformation.');
+        }
+
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDir      = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDir);
+
+        $this->createTestTransparentPng($photoDir . DIRECTORY_SEPARATOR . 'alpha.png', 100, 100);
+        $this->writeIdsManifest($baseDirectory, [
+            'abc123abc123' => 'photo/alpha.png',
+        ]);
+
+        $service = new MediaService(new MediaRepository($baseDirectory));
+        $media   = $service->getMediaById('photo', 'abc123abc123');
+        self::assertNotNull($media);
+
+        $opts = MediaTransformOptions::fromQueryParams([
+            'width' => '300',
+            'height' => '200',
+            'fit' => 'contain',
+            'extension' => 'png',
+            'bgcolor' => 'ff000099',
+        ]);
+
+        $transformed = $service->transformMedia($media, $opts);
+        self::assertTrue($transformed->isReadable());
+        self::assertFileExists($transformed->getPath());
+
+        $output = imagecreatefrompng($transformed->getPath());
+        if ($output === false) {
+            self::fail('Impossible de lire le PNG transformé pour vérifier les pixels.');
+        }
+
+        // Zone letterbox latérale (x<50) : doit être colorée par le bgcolor.
+        $letterbox = $this->readPixelRgba($output, 10, 100);
+        self::assertGreaterThan($letterbox['g'], $letterbox['r']);
+        self::assertGreaterThan($letterbox['b'], $letterbox['r']);
+        self::assertGreaterThan(0, $letterbox['a']);
+
+        // Zone transparente interne de la source : doit aussi être colorée par le bgcolor.
+        $innerTransparent = $this->readPixelRgba($output, 70, 20);
+        self::assertGreaterThan($innerTransparent['g'], $innerTransparent['r']);
+        self::assertGreaterThan($innerTransparent['b'], $innerTransparent['r']);
+        self::assertGreaterThan(0, $innerTransparent['a']);
+
+        // Zone opaque rouge au centre : l'objet source reste visible au-dessus du fond.
+        $center = $this->readPixelRgba($output, 150, 100);
+        self::assertGreaterThan($center['g'], $center['r']);
+        self::assertGreaterThan($center['b'], $center['r']);
+        self::assertSame(0, $center['a']);
+
+        imagedestroy($output);
+    }
+
+    /**
      * Vérifie que `jpeg` et `jpg` produisent la même clé de cache canonique.
      */
     public function testTransformOptionsNormalizeJpegAliasToJpg(): void
@@ -394,6 +497,58 @@ final class MediaServiceTest extends TestCase
 
         imagejpeg($image, $targetPath, 90);
         imagedestroy($image);
+    }
+
+    /**
+     * Crée un PNG transparent avec un carré opaque au centre pour tester la composition alpha.
+     */
+    private function createTestTransparentPng(string $targetPath, int $width, int $height): void
+    {
+        $image = imagecreatetruecolor($width, $height);
+
+        if ($image === false) {
+            self::fail('Impossible de créer une image PNG de test.');
+        }
+
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+
+        $transparent = imagecolorallocatealpha($image, 0, 0, 0, 127);
+        imagefilledrectangle($image, 0, 0, $width, $height, $transparent);
+
+        $opaqueRed = imagecolorallocatealpha($image, 255, 0, 0, 0);
+        $paddingX = max(1, (int) floor($width * 0.35));
+        $paddingY = max(1, (int) floor($height * 0.35));
+        imagefilledrectangle(
+            $image,
+            $paddingX,
+            $paddingY,
+            $width - $paddingX,
+            $height - $paddingY,
+            $opaqueRed,
+        );
+
+        imagepng($image, $targetPath);
+        imagedestroy($image);
+    }
+
+    /**
+     * Lit un pixel RGBA (format GD) et retourne ses canaux séparés.
+     *
+     * @param resource $image
+     *
+     * @return array{r: int, g: int, b: int, a: int}
+     */
+    private function readPixelRgba($image, int $x, int $y): array
+    {
+        $rgba = imagecolorat($image, $x, $y);
+
+        return [
+            'r' => ($rgba >> 16) & 0xFF,
+            'g' => ($rgba >> 8) & 0xFF,
+            'b' => $rgba & 0xFF,
+            'a' => ($rgba & 0x7F000000) >> 24,
+        ];
     }
 }
 

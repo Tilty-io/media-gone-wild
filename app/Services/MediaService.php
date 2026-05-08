@@ -12,6 +12,7 @@ use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\ImageManager;
+use Intervention\Image\Interfaces\ImageInterface;
 use MediaGoneWild\MediaRepository;
 
 /**
@@ -19,6 +20,14 @@ use MediaGoneWild\MediaRepository;
  */
 final class MediaService
 {
+    /**
+     * Version du schéma de cache des transformations d'image.
+     *
+     * Incrémentez cette valeur à chaque changement de logique qui impacte le rendu final
+     * (dans ce service ou dans tout autre code participant à la génération d'images).
+     */
+    private const string TRANSFORM_CACHE_VERSION = 'v2';
+
     /**
      * Mapping MIME prioritaire par extension pour éviter les détections ambiguës.
      *
@@ -234,8 +243,10 @@ final class MediaService
         $sourceExt = strtolower(pathinfo($media->getPath(), PATHINFO_EXTENSION));
         $outputExt = $opts->getNormalizedExtension() ?? ($sourceExt === 'jpeg' ? 'jpg' : $sourceExt);
 
-        $cacheKey  = $opts->toCacheKey($media->getId());
-        $cacheDir  = $this->resolveTransformedCacheDirectory();
+        $cacheKey  = hash('sha256', self::TRANSFORM_CACHE_VERSION . '|' . $opts->toCacheKey($media->getId()));
+        $cacheDir  = $this->resolveTransformedCacheDirectory()
+            . DIRECTORY_SEPARATOR . self::TRANSFORM_CACHE_VERSION
+            . DIRECTORY_SEPARATOR . $media->getId();
         $cachePath = $cacheDir . DIRECTORY_SEPARATOR . $cacheKey . '.' . $outputExt;
 
         // -- Cache hit : on sert directement le fichier existant --
@@ -273,7 +284,7 @@ final class MediaService
                     'cover'         => $image->cover($width, $height),
                     'fill'          => $image->resize($width, $height),
                     'scale'         => $image->scale($width, $height),
-                    default         => $image->contain($width, $height, $bgcolor),
+                    default         => $image->contain($width, $height, $bgcolor !== null ? '00000000' : null),
                 };
             } else {
                 // Une seule dimension fournie : redimensionnement proportionnel.
@@ -281,11 +292,11 @@ final class MediaService
             }
         }
 
-        // -- Application de la couleur de fond sur les zones transparentes --
-        // Pour `contain`, le bgcolor est déjà appliqué par le modifier.
-        // Pour les autres modes, on l'applique ici sur les éventuelles zones transparentes.
-        if ($bgcolor !== null && $fit !== 'contain') {
-            $image->fillTransparentAreas($bgcolor);
+        // -- Composition sur fond demandé --
+        // Si une couleur de fond est fournie, on l'applique d'abord sur un canvas,
+        // puis on y compose l'image transformée pour couvrir aussi les zones transparentes internes.
+        if ($bgcolor !== null) {
+            $image = $this->composeImageOnBackground($manager, $image, $bgcolor);
         }
 
         // -- Encodage vers le format de sortie avec la qualité souhaitée --
@@ -337,6 +348,24 @@ final class MediaService
             $fileSize,
             $isReadable,
         );
+    }
+
+    /**
+     * Crée un canvas rempli avec `bgcolor` puis compose l'image transformée par-dessus.
+     *
+     * Ce pipeline garantit un comportement uniforme quel que soit le mode `fit` utilisé,
+     * y compris sur les pixels semi-transparents de l'image source.
+     */
+    private function composeImageOnBackground(
+        ImageManager $manager,
+        ImageInterface $image,
+        string $bgcolor,
+    ): ImageInterface {
+        $canvas = $manager->createImage($image->width(), $image->height());
+        $canvas->fill($bgcolor);
+        $canvas->insert($image, 0, 0);
+
+        return $canvas;
     }
 
     /**

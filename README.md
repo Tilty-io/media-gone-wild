@@ -123,7 +123,7 @@ Ces paramètres s'appliquent uniquement à l'endpoint `/photo`. Ils sont ignoré
 
 #### Comportement des modes `fit`
 
-- **`contain`** — redimensionne en conservant le ratio, remplit le reste avec `bgcolor` (letterbox)
+- **`contain`** — redimensionne en conservant le ratio ; le letterbox visible dépend du canvas cible
 - **`cover`** — remplit tout le canvas en recadrant le surplus (recadrage centré)
 - **`fill`** — étire l'image aux dimensions exactes sans conserver le ratio
 - **`scale`** — redimensionne proportionnellement (peut ne pas remplir tout le canvas)
@@ -137,12 +137,26 @@ La transparence est portée par les 2 derniers caractères hex (`AA`) dans un bg
 - `transparent` → alias de `00000000`
 
 Si `bgcolor` implique une transparence, utilisez `png` ou `webp` comme `extension` pour la conserver.
-Pour `jpg`, les zones transparentes sont rendues par le décodeur de l'image source sans fond explicite.
+Quand `bgcolor` est fourni, l'API remplit d'abord un fond avec cette couleur puis compose l'image transformée par-dessus,
+ce qui applique aussi la couleur aux zones transparentes internes de l'image source.
+
+Pour `jpg`, la transparence ne peut pas être conservée : le rendu final est aplati.
 
 #### Images transformées et cache
 
 Les images transformées sont automatiquement mises en cache dans `writable/cache/transformed/`.
 Si la même combinaison `id + options` est demandée à nouveau, le fichier de cache est renvoyé directement.
+
+Les fichiers de cache sont organisés par version de pipeline puis par ID média :
+
+```
+writable/cache/transformed/{version}/{id}/{hash}.{ext}
+```
+
+Le cache inclut aussi une version interne de pipeline (`TRANSFORM_CACHE_VERSION` dans `app/Services/MediaService.php`).
+Incrémentez cette version à chaque modification du code qui change le rendu final des images,
+afin de forcer la génération d'un nouveau fichier de cache même avec les mêmes paramètres.
+Les anciens dossiers de version peuvent être supprimés manuellement sans risque.
 
 #### Exemples
 
