@@ -4,63 +4,39 @@
 /**
  * Décrit les démonstrations affichées sur la page d'accueil.
  *
- * @var list<array{title: string, description: string, url: string, previewType: string, previewUrl: string}>
+ * @var list<array{title: string, description: string, params: array<string, string>}>
  */
+$demoPhotoIds = [
+    'abe7c64822d6',
+    '3c1f5c726bdf',
+];
+
+$defaultDemoPhotoId = '3c1f5c726bdf';
+
 $features = [
     [
         'title' => 'Photo par ID',
-        'description' => 'Une base fixe pour comparer chaque transformation sur la même image.',
-        'url' => site_url('photo') . '?' . http_build_query(['id' => 'abe7c64822d6']),
-        'previewType' => 'image',
-        'previewUrl' => site_url('photo') . '?' . http_build_query(['id' => 'abe7c64822d6']),
+        'description' => 'La base pour valider rapidement qu\'un ID précis retourne bien le même média.',
+        'params' => [],
     ],
     [
         'title' => 'Largeur uniquement',
         'description' => 'Redimensionne simplement l\'image en fixant la largeur.',
-        'url' => site_url('photo') . '?' . http_build_query(['id' => 'abe7c64822d6', 'width' => '640']),
-        'previewType' => 'image',
-        'previewUrl' => site_url('photo') . '?' . http_build_query(['id' => 'abe7c64822d6', 'width' => '640']),
+        'params' => ['width' => '640'],
     ],
     [
-        'title' => 'Carré en contain',
-        'description' => 'Force un cadre carré tout en conservant les proportions.',
-        'url' => site_url('photo') . '?' . http_build_query([
-            'id' => 'abe7c64822d6',
-            'width' => '256',
-            'height' => '256',
-            'fit' => 'contain',
-        ]),
-        'previewType' => 'image',
-        'previewUrl' => site_url('photo') . '?' . http_build_query([
-            'id' => 'abe7c64822d6',
-            'width' => '256',
-            'height' => '256',
-            'fit' => 'contain',
-        ]),
-    ],
-    [
-        'title' => 'Recadrage cover',
-        'description' => 'Remplit tout le cadre en recadrant l\'image si nécessaire.',
-        'url' => site_url('photo') . '?' . http_build_query([
-            'id' => 'abe7c64822d6',
-            'width' => '320',
-            'height' => '180',
+        'title' => 'Recadrage social cover',
+        'description' => 'Prépare un format 1200×630 pour des partages en remplissant tout le cadre.',
+        'params' => [
+            'width' => '1200',
+            'height' => '630',
             'fit' => 'cover',
-        ]),
-        'previewType' => 'image',
-        'previewUrl' => site_url('photo') . '?' . http_build_query([
-            'id' => 'abe7c64822d6',
-            'width' => '320',
-            'height' => '180',
-            'fit' => 'cover',
-        ]),
+        ],
     ],
     [
         'title' => 'Export WebP',
         'description' => 'Change simplement le format de sortie sans ajouter d\'autre transformation.',
-        'url' => site_url('photo') . '?' . http_build_query(['id' => 'abe7c64822d6', 'extension' => 'webp']),
-        'previewType' => 'image',
-        'previewUrl' => site_url('photo') . '?' . http_build_query(['id' => 'abe7c64822d6', 'extension' => 'webp']),
+        'params' => ['extension' => 'webp'],
     ],
 ];
 
@@ -70,7 +46,6 @@ $features = [
  * @var array<string, string>
  */
 $bgcolorPickerBaseParams = [
-    'id' => 'abe7c64822d6',
     'width' => '256',
     'height' => '256',
     'fit' => 'contain',
@@ -79,12 +54,28 @@ $bgcolorPickerBaseParams = [
 ?>
     <main class="mx-auto w-full max-w-7xl px-6 py-10 pt-28">
         <?= view('home/partials/intro') ?>
-        <?= view('home/partials/demo-section', ['features' => $features]) ?>
-        <?= view('home/partials/bgcolor-picker', ['bgcolorPickerBaseParams' => $bgcolorPickerBaseParams]) ?>
-        <?= view('home/partials/photo-params') ?>
+        <?= view('home/partials/demo-section', [
+            'features' => $features,
+            'demoPhotoIds' => $demoPhotoIds,
+            'defaultDemoPhotoId' => $defaultDemoPhotoId,
+        ]) ?>
+        <?= view('home/partials/bgcolor-picker', [
+            'bgcolorPickerBaseParams' => $bgcolorPickerBaseParams,
+            'defaultDemoPhotoId' => $defaultDemoPhotoId,
+        ]) ?>
         <?= view('home/partials/cta-links') ?>
+        <?= view('home/partials/photo-params') ?>
     </main>
-    <?= view('home/partials/bgcolor-script', ['bgcolorPickerBaseParams' => $bgcolorPickerBaseParams]) ?>
+    <?= view('home/partials/photo-transform-modal', ['defaultDemoPhotoId' => $defaultDemoPhotoId]) ?>
+    <div id="global-copy-toast" class="toast toast-top toast-end hidden z-[60]">
+        <div class="alert alert-success py-2 px-3 text-sm">
+            <span>copié</span>
+        </div>
+    </div>
+    <?= view('home/partials/home-script', [
+        'defaultDemoPhotoId' => $defaultDemoPhotoId,
+        'bgcolorPickerBaseParams' => $bgcolorPickerBaseParams,
+    ]) ?>
 <?= view('partials/footer') ?>
 
 

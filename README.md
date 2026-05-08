@@ -126,7 +126,7 @@ Ces paramètres s'appliquent uniquement à l'endpoint `/photo`. Ils sont ignoré
 - **`contain`** — redimensionne en conservant le ratio ; le letterbox visible dépend du canvas cible
 - **`cover`** — remplit tout le canvas en recadrant le surplus (recadrage centré)
 - **`fill`** — étire l'image aux dimensions exactes sans conserver le ratio
-- **`scale`** — redimensionne proportionnellement (peut ne pas remplir tout le canvas)
+- **`scale`** — redimensionne proportionnellement sans forcer le remplissage complet du canvas ; l'image générée peut ne pas mesurer exactement la taille demandée
 
 #### Règles de transparence (`bgcolor`)
 
@@ -192,6 +192,23 @@ Exemple avec pagination :
 `https://media-gone-wild.tilty.io/catalogue?type=photo&limit=50&page=2`
 
 Le catalogue inclut aussi un bouton **Mélanger** (anciennement Random) qui randomise l'ordre d'affichage des médias selon le filtre courant.
+
+## Accueil
+
+La page d'accueil (`/`) présente désormais le projet comme un faker de médias avec trois collections:
+
+- photos ;
+- vidéos ;
+- logos.
+
+La section démonstrations de l'accueil inclut:
+
+- un sélecteur global d'ID photo (actuellement `abe7c64822d6` et `3c1f5c726bdf`) appliqué à tous les exemples ;
+- une carte interactive pour comparer les modes `fit` (`contain`, `cover`, `fill`, `scale`) ;
+- dans cette carte `fit`, un choix de proportions (`4/3`, `3/4`, `16/9`, `1/1`), un choix de fond (`noir`, `blanc`, `jaune semi-transparent`) et une légende `taille réelle` sur l'aperçu ;
+- des cartes d'URL API avec actions centralisées :
+  - copie dans le presse-papiers (toast `copié`) ;
+  - ouverture directe dans la popin de transformation photo (icône baguette magique).
 
 ## Tests unitaires
 

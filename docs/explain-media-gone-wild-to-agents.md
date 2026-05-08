@@ -62,6 +62,7 @@ Règles :
 - `/video` renvoie une vraie vidéo binaire.
 - `/logo` renvoie un logo, généralement au format SVG.
 - `/` renvoie une page HTML d'accueil qui explique l'usage de l'API.
+- La home inclut un sélecteur d'ID photo commun à toutes les démos, une carte interactive pour `fit` (mode, proportions `4/3` `3/4` `16/9` `1/1`, fond noir/blanc/jaune semi-transparent, légende `taille réelle`), et des cartes URL avec actions copier + ouverture dans la popin de transformation.
 ```
 
 

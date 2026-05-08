@@ -1,9 +1,15 @@
 <?php
 /** @var array<string, string> $bgcolorPickerBaseParams */
+/** @var string $defaultDemoPhotoId */
 $initialBgcolor = 'ff00ff';
-$initialUrl = site_url('photo') . '?' . http_build_query($bgcolorPickerBaseParams + ['bgcolor' => $initialBgcolor]);
+$initialUrl = site_url('photo') . '?' . http_build_query(['id' => $defaultDemoPhotoId] + $bgcolorPickerBaseParams + ['bgcolor' => $initialBgcolor]);
 ?>
-<section class="mb-8 rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+<section
+    class="mb-8 rounded-box border border-base-300 bg-base-100 p-6 shadow-sm"
+    id="bgcolor-picker-root"
+    data-bgcolor-picker
+    data-bgcolor-picker-base='<?= esc(json_encode($bgcolorPickerBaseParams, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) ?>'
+>
     <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
             <h2 class="text-xl font-semibold">Tester `bgcolor`</h2>
@@ -31,6 +37,7 @@ $initialUrl = site_url('photo') . '?' . http_build_query($bgcolorPickerBaseParam
                 >
             </div>
             <p id="bgcolor-picker-status" class="mt-3 text-xs opacity-70">Fond actuel : <span class="font-mono"><?= esc($initialBgcolor) ?></span></p>
+            <p id="bgcolor-picker-photo-id" class="mt-1 text-xs opacity-70">Photo testée : <span class="font-mono"><?= esc($defaultDemoPhotoId) ?></span></p>
         </div>
 
         <div class="space-y-4">
@@ -63,15 +70,8 @@ $initialUrl = site_url('photo') . '?' . http_build_query($bgcolorPickerBaseParam
                 <p id="bgcolor-picker-token" class="font-mono text-sm text-primary"><?= esc($initialBgcolor) ?></p>
             </div>
 
-            <div class="rounded-lg border border-base-300 bg-base-200 p-3">
-                <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-70">URL</p>
-                <a
-                    id="bgcolor-picker-link"
-                    href="<?= esc($initialUrl) ?>"
-                    target="_blank"
-                    rel="noopener"
-                    class="font-mono text-xs text-primary underline break-all"
-                ><?= esc($initialUrl) ?></a>
+            <div id="bgcolor-picker-url-host">
+                <?= view('components/api-url-actions', ['url' => $initialUrl]) ?>
             </div>
         </div>
     </div>
