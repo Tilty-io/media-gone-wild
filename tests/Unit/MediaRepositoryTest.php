@@ -258,6 +258,320 @@ final class MediaRepositoryTest extends TestCase
     }
 
     /**
+     * Vérifie que le catalogue ne jette plus d'exception quand un fichier référencé dans
+     * le manifeste a été supprimé du disque.
+     */
+    public function testListEntriesSkipsDeletedFilesWithoutThrowing(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'keep.jpg', 'keep');
+        $deletedFile = $photoDirectory . DIRECTORY_SEPARATOR . 'deleted.jpg';
+        file_put_contents($deletedFile, 'deleted');
+
+        $this->writeIdsManifest($baseDirectory, [
+            'aaa111bbb222' => 'photo/keep.jpg',
+            'ccc333ddd444' => 'photo/deleted.jpg',
+        ]);
+
+        // Suppression du fichier après l'écriture du manifeste.
+        unlink($deletedFile);
+
+        $repository = new MediaRepository($baseDirectory);
+
+        // Ne doit pas lever d'exception.
+        $entries = $repository->listEntries('photo');
+
+        self::assertCount(1, $entries);
+        self::assertSame('aaa111bbb222', $entries[0]['id']);
+    }
+
+    /**
+     * Vérifie que findOrphanedIdRelativePaths retourne les chemins des fichiers supprimés.
+     */
+    public function testFindOrphanedIdRelativePathsReturnsDeletedFiles(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'keep.jpg', 'keep');
+        $deletedFile = $photoDirectory . DIRECTORY_SEPARATOR . 'deleted.jpg';
+        file_put_contents($deletedFile, 'deleted');
+
+        $this->writeIdsManifest($baseDirectory, [
+            'aaa111bbb222' => 'photo/keep.jpg',
+            'ccc333ddd444' => 'photo/deleted.jpg',
+        ]);
+
+        unlink($deletedFile);
+
+        $repository = new MediaRepository($baseDirectory);
+        $orphaned   = $repository->findOrphanedIdRelativePaths();
+
+        self::assertCount(1, $orphaned);
+        self::assertSame('photo/deleted.jpg', $orphaned[0]);
+    }
+
+    /**
+     * Vérifie que cleanupOrphanedIds supprime les entrées orphelines du manifeste.
+     */
+    public function testCleanupOrphanedIdsRemovesDeletedFilesFromManifest(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'keep.jpg', 'keep');
+        $deletedFile = $photoDirectory . DIRECTORY_SEPARATOR . 'deleted.jpg';
+        file_put_contents($deletedFile, 'deleted');
+
+        $this->writeIdsManifest($baseDirectory, [
+            'aaa111bbb222' => 'photo/keep.jpg',
+            'ccc333ddd444' => 'photo/deleted.jpg',
+        ]);
+
+        unlink($deletedFile);
+
+        $repository = new MediaRepository($baseDirectory);
+        $result     = $repository->cleanupOrphanedIds();
+
+        self::assertSame(1, $result['removed']);
+        self::assertSame(1, $result['total']);
+        self::assertTrue($result['changed']);
+
+        $manifest = $this->readIdsManifest($baseDirectory);
+        self::assertArrayHasKey('aaa111bbb222', $manifest);
+        self::assertArrayNotHasKey('ccc333ddd444', $manifest);
+    }
+
+    /**
+     * Vérifie que cleanupOrphanedIds en mode dry-run ne modifie pas le manifeste.
+     */
+    public function testCleanupOrphanedIdsDryRunDoesNotWriteFile(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory);
+
+        $deletedFile = $photoDirectory . DIRECTORY_SEPARATOR . 'deleted.jpg';
+        file_put_contents($deletedFile, 'deleted');
+
+        $this->writeIdsManifest($baseDirectory, [
+            'aaa111bbb222' => 'photo/deleted.jpg',
+        ]);
+
+        unlink($deletedFile);
+
+        $manifestPath = $baseDirectory . DIRECTORY_SEPARATOR . 'ids.json';
+        $before = file_get_contents($manifestPath);
+
+        $repository = new MediaRepository($baseDirectory);
+        $result     = $repository->cleanupOrphanedIds(true);
+
+        $after = file_get_contents($manifestPath);
+
+        self::assertSame(1, $result['removed']);
+        self::assertTrue($result['changed']);
+        self::assertSame($before, $after);
+    }
+
+    /**
+     * Vérifie que les fichiers dans des sous-dossiers d'un type de média sont bien inclus.
+     *
+     * Par exemple, `photo/products/foo.jpg` doit être listé et sélectionnable
+     * au même titre que `photo/foo.jpg`.
+     */
+    public function testFilesInSubdirectoriesAreIncluded(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        $subDirectory   = $photoDirectory . DIRECTORY_SEPARATOR . 'products';
+        mkdir($subDirectory, 0777, true);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'root.jpg', 'root');
+        file_put_contents($subDirectory   . DIRECTORY_SEPARATOR . 'sub.jpg',  'sub');
+
+        $repository = new MediaRepository($baseDirectory);
+        $entries    = $repository->listEntries('photo');
+
+        self::assertCount(2, $entries);
+        $paths = array_column($entries, 'path');
+        self::assertContains($photoDirectory . DIRECTORY_SEPARATOR . 'root.jpg', $paths);
+        self::assertContains($subDirectory   . DIRECTORY_SEPARATOR . 'sub.jpg',  $paths);
+    }
+
+    /**
+     * Vérifie que la clé `collection` est correctement renseignée dans les entrées.
+     *
+     * Les fichiers à la racine du type doivent avoir `collection = null`.
+     * Les fichiers dans un sous-dossier direct doivent avoir `collection = nom_du_sous_dossier`.
+     */
+    public function testEntriesExposeCollectionKey(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        $subDirectory   = $photoDirectory . DIRECTORY_SEPARATOR . 'products';
+        mkdir($subDirectory, 0777, true);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'root.jpg', 'root');
+        file_put_contents($subDirectory   . DIRECTORY_SEPARATOR . 'sub.jpg',  'sub');
+
+        $this->writeIdsManifest($baseDirectory, [
+            'aaa111bbb222' => 'photo/root.jpg',
+            'ccc333ddd444' => 'photo/products/sub.jpg',
+        ]);
+
+        $repository = new MediaRepository($baseDirectory);
+        $entries    = $repository->listEntries('photo');
+
+        $byId = array_column($entries, null, 'id');
+
+        self::assertNull($byId['aaa111bbb222']['collection']);
+        self::assertSame('products', $byId['ccc333ddd444']['collection']);
+    }
+
+    /**
+     * Vérifie que listCollections retourne uniquement les collections peuplées.
+     */
+    public function testListCollectionsReturnsPopulatedSubdirectories(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory . DIRECTORY_SEPARATOR . 'alpha', 0777, true);
+        mkdir($photoDirectory . DIRECTORY_SEPARATOR . 'beta',  0777, true);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'root.jpg', 'root');
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'alpha' . DIRECTORY_SEPARATOR . 'a.jpg', 'a');
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'beta'  . DIRECTORY_SEPARATOR . 'b.jpg', 'b');
+
+        $repository   = new MediaRepository($baseDirectory);
+        $collections  = $repository->listCollections('photo');
+
+        self::assertSame(['alpha', 'beta'], $collections);
+    }
+
+    /**
+     * Vérifie que listEntries filtre correctement les médias par collection.
+     */
+    public function testListEntriesFiltersbyCollection(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory . DIRECTORY_SEPARATOR . 'products', 0777, true);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'root.jpg', 'root');
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . 'p.jpg', 'p');
+
+        $repository = new MediaRepository($baseDirectory);
+
+        self::assertCount(1, $repository->listEntries('photo', 'products'));
+        self::assertCount(2, $repository->listEntries('photo'));
+        self::assertCount(0, $repository->listEntries('photo', 'inexistant'));
+    }
+
+    /**
+     * Vérifie que pick avec une collection ne renvoie que des médias de cette collection.
+     */
+    public function testPickWithCollectionOnlyReturnsFilesFromThatCollection(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory . DIRECTORY_SEPARATOR . 'products', 0777, true);
+
+        file_put_contents($photoDirectory . DIRECTORY_SEPARATOR . 'root.jpg', 'root');
+        $productFile = $photoDirectory . DIRECTORY_SEPARATOR . 'products' . DIRECTORY_SEPARATOR . 'prod.jpg';
+        file_put_contents($productFile, 'prod');
+
+        $repository = new MediaRepository($baseDirectory);
+
+        for ($i = 0; $i < 20; $i++) {
+            $picked = $repository->pick('photo', null, 'products');
+            self::assertSame($productFile, $picked);
+        }
+    }
+
+    /**
+     * Vérifie que getCollectionByPath retourne null pour un fichier à la racine du type.
+     */
+    public function testGetCollectionByPathReturnsNullForRootFile(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $photoDirectory = $baseDirectory . DIRECTORY_SEPARATOR . 'photo';
+        mkdir($photoDirectory);
+        $filePath = $photoDirectory . DIRECTORY_SEPARATOR . 'root.jpg';
+        file_put_contents($filePath, 'root');
+
+        $repository = new MediaRepository($baseDirectory);
+
+        self::assertNull($repository->getCollectionByPath($filePath));
+    }
+
+    /**
+     * Vérifie que getCollectionByPath retourne le nom du sous-dossier direct.
+     */
+    public function testGetCollectionByPathReturnsSubdirectoryName(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $subDirectory  = $baseDirectory . DIRECTORY_SEPARATOR . 'photo' . DIRECTORY_SEPARATOR . 'products';
+        mkdir($subDirectory, 0777, true);
+        $filePath = $subDirectory . DIRECTORY_SEPARATOR . 'p.jpg';
+        file_put_contents($filePath, 'p');
+
+        $repository = new MediaRepository($baseDirectory);
+
+        self::assertSame('products', $repository->getCollectionByPath($filePath));
+    }
+
+    /**
+     * Vérifie que findById fonctionne pour un fichier situé dans un sous-dossier.
+     */
+    public function testFindByIdWorksForFileInSubdirectory(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        $subDirectory  = $baseDirectory . DIRECTORY_SEPARATOR . 'photo' . DIRECTORY_SEPARATOR . 'products';
+        mkdir($subDirectory, 0777, true);
+
+        $filePath = $subDirectory . DIRECTORY_SEPARATOR . 'widget.jpg';
+        file_put_contents($filePath, 'widget');
+
+        $this->writeIdsManifest($baseDirectory, [
+            'abc123def456' => 'photo/products/widget.jpg',
+        ]);
+
+        $repository = new MediaRepository($baseDirectory);
+
+        self::assertSame($filePath, $repository->findById('photo', 'abc123def456'));
+    }
+
+    /**
+     * Vérifie que deux fichiers de même nom dans des sous-dossiers différents
+     * reçoivent bien des IDs distincts lors de la synchronisation.
+     */
+    public function testSyncAssignsDistinctIdsToFilesWithSameNameInDifferentSubdirectories(): void
+    {
+        $baseDirectory = $this->createTemporaryDirectory();
+        mkdir($baseDirectory . DIRECTORY_SEPARATOR . 'photo' . DIRECTORY_SEPARATOR . 'a', 0777, true);
+        mkdir($baseDirectory . DIRECTORY_SEPARATOR . 'photo' . DIRECTORY_SEPARATOR . 'b', 0777, true);
+
+        file_put_contents($baseDirectory . DIRECTORY_SEPARATOR . 'photo' . DIRECTORY_SEPARATOR . 'a' . DIRECTORY_SEPARATOR . 'same.jpg', 'a');
+        file_put_contents($baseDirectory . DIRECTORY_SEPARATOR . 'photo' . DIRECTORY_SEPARATOR . 'b' . DIRECTORY_SEPARATOR . 'same.jpg', 'b');
+
+        $repository = new MediaRepository($baseDirectory);
+        $repository->syncIdsManifest();
+
+        $manifest = $this->readIdsManifest($baseDirectory);
+
+        self::assertCount(2, $manifest);
+        self::assertContains('photo/a/same.jpg', $manifest);
+        self::assertContains('photo/b/same.jpg', $manifest);
+        // Les deux IDs doivent être différents
+        self::assertSame(2, count(array_unique(array_keys($manifest))));
+    }
+
+    /**
      * Crée un répertoire temporaire unique pour les tests et le supprime à la fin.
      *
      * Chaque scénario manipule ainsi ses propres fichiers sans dépendre du contenu

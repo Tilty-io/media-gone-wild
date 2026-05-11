@@ -12,12 +12,13 @@ final readonly class MediaFile
     /**
      * Construit la description complète d'un média résolu par l'application.
      *
-     * @param string $path Le chemin absolu du fichier sur le disque.
-     * @param string $id L'identifiant stable du média, sans extension.
-     * @param string $fileName Le nom de fichier sûr à exposer au navigateur.
-     * @param string $mimeType Le type MIME calculé pour la réponse HTTP.
-     * @param int $fileSize La taille du fichier en octets.
-     * @param bool $readable Indique si le fichier est lisible par PHP.
+     * @param string      $path       Le chemin absolu du fichier sur le disque.
+     * @param string      $id         L'identifiant stable du média, sans extension.
+     * @param string      $fileName   Le nom de fichier sûr à exposer au navigateur.
+     * @param string      $mimeType   Le type MIME calculé pour la réponse HTTP.
+     * @param int         $fileSize   La taille du fichier en octets.
+     * @param bool        $readable   Indique si le fichier est lisible par PHP.
+     * @param string|null $collection Le nom de la collection (sous-dossier) d'appartenance, ou null.
      */
     public function __construct(
         private string $path,
@@ -26,6 +27,7 @@ final readonly class MediaFile
         private string $mimeType,
         private int $fileSize,
         private bool $readable,
+        private ?string $collection = null,
     ) {
     }
 
@@ -75,6 +77,16 @@ final readonly class MediaFile
     public function isReadable(): bool
     {
         return $this->readable;
+    }
+
+    /**
+     * Retourne le nom de la collection (sous-dossier) d'appartenance du média.
+     *
+     * Retourne null si le média est à la racine de son type (ex. `photo/foo.jpg`).
+     */
+    public function getCollection(): ?string
+    {
+        return $this->collection;
     }
 }
 

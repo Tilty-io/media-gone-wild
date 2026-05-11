@@ -27,7 +27,11 @@ final class MediaRepository
     /**
      * Index mémoire des médias par type.
      *
-     * @var array<string, list<array{id: string, path: string}>>|null
+     * Chaque entrée contient les clés `id`, `path` et `collection`.
+     * `collection` est le nom du sous-dossier direct (ex. `products` pour `photo/products/foo.jpg`)
+     * ou `null` pour les médias placés à la racine du type (ex. `photo/foo.jpg`).
+     *
+     * @var array<string, list<array{id: string, path: string, collection: string|null}>>|null
      */
     private ?array $entriesByType = null;
 
@@ -62,15 +66,17 @@ final class MediaRepository
      *
      * Quand un seed est fourni, la sélection est déterministe afin de toujours renvoyer
      * le même fichier pour la même valeur. Sans seed, le fichier est choisi aléatoirement.
+     * Si une collection est précisée, seuls les médias appartenant à ce sous-dossier sont candidats.
      *
-     * @param string $mediaType Le type de média à chercher.
-     * @param string|null $seed Le seed optionnel utilisé pour une sélection reproductible.
+     * @param string      $mediaType  Le type de média à chercher.
+     * @param string|null $seed       Le seed optionnel utilisé pour une sélection reproductible.
+     * @param string|null $collection Le nom de collection (sous-dossier) à cibler, ou null pour tout le type.
      *
      * @return string|null Le chemin complet du fichier choisi, ou null si aucun fichier n'est disponible.
      */
-    public function pick(string $mediaType, ?string $seed = null): ?string
+    public function pick(string $mediaType, ?string $seed = null, ?string $collection = null): ?string
     {
-        $files = $this->list($mediaType);
+        $files = $this->list($mediaType, $collection);
 
         if ($files === []) {
             return null;
@@ -88,30 +94,70 @@ final class MediaRepository
     /**
      * Retourne la liste des fichiers disponibles pour un type de média.
      *
-     * @param string $mediaType Le type de média à lister.
+     * @param string      $mediaType  Le type de média à lister.
+     * @param string|null $collection La collection à filtrer, ou null pour tout le type.
      *
      * @return list<string> Les chemins absolus des fichiers trouvés, triés par nom.
      */
-    public function list(string $mediaType): array
+    public function list(string $mediaType, ?string $collection = null): array
     {
         return array_map(
             static fn (array $entry): string => $entry['path'],
-            $this->listEntries($mediaType),
+            $this->listEntries($mediaType, $collection),
         );
     }
 
     /**
      * Retourne la liste des médias disponibles pour un type avec leur identifiant stable.
      *
-     * @param string $mediaType Le type de média à lister.
+     * Chaque entrée contient les clés `id`, `path` et `collection`.
      *
-     * @return list<array{id: string, path: string}> Les médias disponibles pour le type demandé.
+     * @param string      $mediaType  Le type de média à lister.
+     * @param string|null $collection La collection à filtrer (sous-dossier direct), ou null pour tout le type.
+     *
+     * @return list<array{id: string, path: string, collection: string|null}> Les médias disponibles.
      */
-    public function listEntries(string $mediaType): array
+    public function listEntries(string $mediaType, ?string $collection = null): array
     {
         $this->loadMediaIndexes();
 
-        return $this->entriesByType[$mediaType] ?? [];
+        $entries = $this->entriesByType[$mediaType] ?? [];
+
+        if ($collection !== null) {
+            $entries = array_values(array_filter(
+                $entries,
+                static fn (array $entry): bool => $entry['collection'] === $collection,
+            ));
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Retourne les noms des collections (sous-dossiers directs) disponibles pour un type donné.
+     *
+     * Seules les collections effectivement peuplées apparaissent dans la liste.
+     * Les médias sans sous-dossier (à la racine du type) ne génèrent pas d'entrée.
+     *
+     * @param string $mediaType Le type de média à inspecter.
+     *
+     * @return list<string> Les noms de collections triés par ordre alphabétique.
+     */
+    public function listCollections(string $mediaType): array
+    {
+        $this->loadMediaIndexes();
+
+        $collections = [];
+
+        foreach ($this->entriesByType[$mediaType] ?? [] as $entry) {
+            if ($entry['collection'] !== null && ! in_array($entry['collection'], $collections, true)) {
+                $collections[] = $entry['collection'];
+            }
+        }
+
+        sort($collections, SORT_STRING);
+
+        return $collections;
     }
 
     /**
@@ -167,6 +213,30 @@ final class MediaRepository
     }
 
     /**
+     * Retourne le nom de la collection d'un média à partir de son chemin absolu.
+     *
+     * La collection correspond au sous-dossier direct du type (ex. `products` pour
+     * `photo/products/foo.jpg`). Retourne null si le média est à la racine du type.
+     *
+     * @param string $path Le chemin absolu du média.
+     *
+     * @return string|null Le nom de la collection, ou null si le média est à la racine.
+     */
+    public function getCollectionByPath(string $path): ?string
+    {
+        $relativePath = $this->relativePathFromAbsolutePath($path);
+
+        if ($relativePath === null) {
+            return null;
+        }
+
+        $parts = explode('/', $relativePath);
+
+        // structure : type/[collection/]filename → collection est parts[1] si count > 2
+        return count($parts) > 2 ? $parts[1] : null;
+    }
+
+    /**
      * Retourne l'identifiant stable d'un média à partir de son chemin absolu.
      *
      * @param string $path Le chemin absolu du média.
@@ -204,6 +274,84 @@ final class MediaRepository
         }
 
         return $missingRelativePaths;
+    }
+
+    /**
+     * Retourne les chemins relatifs référencés dans le manifeste mais dont le fichier
+     * n'existe plus sur le disque (entrées orphelines).
+     *
+     * @return list<string> Les chemins relatifs orphelins.
+     */
+    public function findOrphanedIdRelativePaths(): array
+    {
+        $relativePathById = $this->loadManifestIdMap();
+        $orphaned = [];
+
+        foreach ($relativePathById as $relativePath) {
+            $absolutePath = $this->baseDirectory . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+
+            if (! is_file($absolutePath)) {
+                $orphaned[] = $relativePath;
+            }
+        }
+
+        return $orphaned;
+    }
+
+    /**
+     * Indique si au moins une entrée du manifeste ne corresponds plus à un fichier existant.
+     */
+    public function hasOrphanedIds(): bool
+    {
+        return $this->countOrphanedIds() > 0;
+    }
+
+    /**
+     * Retourne le nombre d'entrées orphelines dans le manifeste (fichiers supprimés).
+     */
+    public function countOrphanedIds(): int
+    {
+        return count($this->findOrphanedIdRelativePaths());
+    }
+
+    /**
+     * Supprime du manifeste les entrées ne correspondant plus à un fichier existant sur le disque.
+     *
+     * Les entrées valides (fichier toujours présent) restent inchangées.
+     *
+     * @param bool $dryRun Si true, simule le nettoyage sans écrire le fichier.
+     *
+     * @return array{removed: int, total: int, changed: bool} Le bilan du nettoyage.
+     */
+    public function cleanupOrphanedIds(bool $dryRun = false): array
+    {
+        $relativePathById = $this->loadManifestIdMap();
+        $orphanedPaths = $this->findOrphanedIdRelativePaths();
+
+        if ($orphanedPaths === []) {
+            return [
+                'removed' => 0,
+                'total' => count($relativePathById),
+                'changed' => false,
+            ];
+        }
+
+        $orphanedSet = array_fill_keys($orphanedPaths, true);
+        $cleaned = array_filter(
+            $relativePathById,
+            static fn (string $path): bool => ! isset($orphanedSet[$path]),
+        );
+
+        if (! $dryRun) {
+            $this->persistManifestIdMap($cleaned);
+            $this->resetIndexes();
+        }
+
+        return [
+            'removed' => count($orphanedPaths),
+            'total' => count($cleaned),
+            'changed' => true,
+        ];
     }
 
     /**
@@ -270,6 +418,9 @@ final class MediaRepository
      * Cette stratégie évite de remapper massivement les seeds quand un nouveau fichier
      * est ajouté : seul un sous-ensemble des seeds bascule vers ce nouveau fichier.
      *
+     * Le chemin relatif portable (ex : `photo/products/foo.jpg`) est utilisé dans le hash
+     * afin d'éviter les collisions entre fichiers de sous-dossiers différents portant le même nom.
+     *
      * @param list<string> $files Les chemins complets disponibles pour le type demandé.
      * @param string $seed Le seed fourni par le client.
      *
@@ -278,13 +429,14 @@ final class MediaRepository
     private function pickDeterministicFile(array $files, string $seed): string
     {
         $pickedFile = $files[0];
-        $bestScore = hash('sha256', $seed . '|' . basename($pickedFile));
+        $bestScore  = hash('sha256', $seed . '|' . ($this->relativePathFromAbsolutePath($files[0]) ?? $files[0]));
 
         foreach ($files as $file) {
-            $score = hash('sha256', $seed . '|' . basename($file));
+            $relPath = $this->relativePathFromAbsolutePath($file) ?? $file;
+            $score   = hash('sha256', $seed . '|' . $relPath);
 
             if (strcmp($score, $bestScore) > 0) {
-                $bestScore = $score;
+                $bestScore  = $score;
                 $pickedFile = $file;
             }
         }
@@ -318,9 +470,14 @@ final class MediaRepository
                 throw new \LogicException('Chaque média indexé doit appartenir à un type valide.');
             }
 
+            // Calcule la collection depuis le chemin relatif (sous-dossier direct du type).
+            $parts = explode('/', $relativePath);
+            $collection = count($parts) > 2 ? $parts[1] : null;
+
             $entriesByType[$mediaType][] = [
                 'id' => $entry['id'],
                 'path' => $path,
+                'collection' => $collection,
             ];
             $relativePathById[$entry['id']] = $relativePath;
             $idByRelativePath[$relativePath] = $entry['id'];
@@ -395,7 +552,11 @@ final class MediaRepository
     /**
      * Charge les identifiants depuis le manifeste versionné du projet.
      *
-     * @return list<array{id: string, relativePath: string}> Les médias définis dans le manifeste.
+     * Les entrées dont le fichier n'existe plus sur le disque sont ignorées silencieusement
+     * afin d'éviter toute exception lors d'un chargement de page après une suppression de fichier.
+     * La méthode `cleanupOrphanedIds()` permet de purger ces entrées orphelines du manifeste.
+     *
+     * @return list<array{id: string, relativePath: string}> Les médias définis dans le manifeste et présents sur disque.
      */
     private function loadEntriesFromManifest(): array
     {
@@ -407,7 +568,9 @@ final class MediaRepository
             $absolutePath = $this->baseDirectory . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
 
             if (! is_file($absolutePath)) {
-                throw new \LogicException('Le manifeste référence un média introuvable sur le disque : ' . $relativePath);
+                // Fichier supprimé du disque : on ignore l'entrée sans bloquer le chargement.
+                // Utiliser cleanupOrphanedIds() pour purger ces références du manifeste.
+                continue;
             }
 
             $entries[] = [
@@ -427,23 +590,37 @@ final class MediaRepository
     /**
      * Retourne la liste des médias présents sur disque, triés par chemin relatif.
      *
+     * Scanne récursivement les sous-dossiers de chaque type de média
+     * (ex : `photo/products/`) afin d'inclure toutes les images imbriquées.
+     *
      * @return list<string> Les chemins relatifs des médias présents sur disque.
      */
     private function listRelativeMediaPaths(): array
     {
-        $directories = glob($this->baseDirectory . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR) ?: [];
-        sort($directories, SORT_STRING);
+        $typeDirectories = glob($this->baseDirectory . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR) ?: [];
+        sort($typeDirectories, SORT_STRING);
 
-        $relativePaths = [];
+        $relativePaths  = [];
+        $basePrefixLength = strlen($this->baseDirectory) + 1;
 
-        foreach ($directories as $directory) {
-            $mediaType = basename($directory);
-            $files = glob($directory . DIRECTORY_SEPARATOR . '*') ?: [];
-            $files = array_values(array_filter($files, 'is_file'));
+        foreach ($typeDirectories as $typeDirectory) {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($typeDirectory, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST,
+            );
+
+            $files = [];
+
+            foreach ($iterator as $fileInfo) {
+                if ($fileInfo->isFile()) {
+                    $files[] = $fileInfo->getPathname();
+                }
+            }
+
             sort($files, SORT_STRING);
 
             foreach ($files as $filePath) {
-                $relativePaths[] = $mediaType . '/' . basename($filePath);
+                $relativePaths[] = str_replace(DIRECTORY_SEPARATOR, '/', substr($filePath, $basePrefixLength));
             }
         }
 

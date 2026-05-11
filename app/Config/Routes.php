@@ -8,6 +8,7 @@ use CodeIgniter\Router\RouteCollection;
 $routes->setAutoRoute(false);
 
 $routes->get('/', 'MediaController::index');
+$routes->get('doc', 'MediaController::doc');
 $routes->get('catalogue', 'MediaController::catalogue');
 $routes->get('catalogue/media/(:segment)/(:any)', 'MediaController::catalogueMedia/$1/$2');
 $routes->get('photo\.(:alpha)', 'MediaController::photoWithExtension/$1');

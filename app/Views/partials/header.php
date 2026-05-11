@@ -29,12 +29,13 @@ $logoUrl = site_url('logo') . '?' . http_build_query(['r' => (string) microtime(
     <header class="navbar fixed top-0 left-0 right-0 z-50 border-b border-base-300 bg-base-100/95 px-4 shadow-sm backdrop-blur">
         <div class="mx-auto flex w-full max-w-7xl items-center justify-between">
             <a href="<?= esc(site_url()) ?>" class="btn btn-ghost gap-3 px-2 text-base">
-                <img src="<?= esc($logoUrl) ?>" alt="Logo aléatoire" class="h-8 w-8 rounded object-contain">
+                <img src="<?= esc($logoUrl) ?>" alt="Logo aléatoire" loading="lazy" class="h-8 w-8 rounded object-contain">
                 <span>Media Gone Wild</span>
             </a>
             <div class="flex items-center gap-2">
                 <a href="<?= esc(site_url()) ?>" class="btn btn-sm btn-ghost">Accueil</a>
                 <a href="<?= esc(site_url('catalogue')) ?>" class="btn btn-sm btn-ghost">Catalogue</a>
+                <a href="<?= esc(site_url('doc')) ?>" class="btn btn-sm btn-ghost">Doc</a>
                 <label class="label cursor-pointer gap-2 rounded-box border border-base-300 px-3 py-2">
                     <span id="theme-toggle-label" class="label-text text-sm">Light</span>
                     <input id="theme-toggle" type="checkbox" class="toggle toggle-sm">

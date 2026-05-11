@@ -50,6 +50,20 @@ final class MediaController extends BaseController
     }
 
     /**
+     * Affiche la documentation complète des paramètres de l'API.
+     */
+    public function doc(): ResponseInterface
+    {
+        return $this->response
+            ->setContentType('text/html; charset=UTF-8')
+            ->setBody(view('doc/index', [
+                'allowedFitModes'  => \App\DTO\MediaTransformOptions::ALLOWED_FIT_MODES,
+                'allowedExtensions' => \App\DTO\MediaTransformOptions::ALLOWED_EXTENSIONS,
+                'defaultQuality'   => \App\DTO\MediaTransformOptions::DEFAULT_QUALITY,
+            ]));
+    }
+
+    /**
      * Retourne une photo aléatoire.
      */
     public function photo(): ResponseInterface
@@ -120,11 +134,24 @@ final class MediaController extends BaseController
     {
         $syncReport = $this->mediaService->syncIdsForCatalogueIfNeeded();
 
-        if (! $syncReport['synced'] && $syncReport['missing'] > 0 && $this->canAutoSyncIds()) {
-            $syncResult = $this->mediaService->syncIdsManifest();
+        if (! $syncReport['synced'] && ($syncReport['missing'] > 0 || $this->mediaService->countOrphanedIds() > 0) && $this->canAutoSyncIds()) {
+            $added   = 0;
+            $removed = 0;
+
+            if ($this->mediaService->countOrphanedIds() > 0) {
+                $cleanupResult = $this->mediaService->cleanupOrphanedIds();
+                $removed = $cleanupResult['removed'];
+            }
+
+            if ($syncReport['missing'] > 0) {
+                $syncResult = $this->mediaService->syncIdsManifest();
+                $added = $syncResult['added'];
+            }
+
             $syncReport = [
-                'synced' => $syncResult['added'] > 0,
-                'added' => $syncResult['added'],
+                'synced'  => $added > 0 || $removed > 0,
+                'added'   => $added,
+                'removed' => $removed,
                 'missing' => $this->mediaService->countMissingIds(),
             ];
         }
@@ -132,6 +159,13 @@ final class MediaController extends BaseController
         $selectedType = $this->request->getGet('type');
         $selectedType = is_string($selectedType) ? strtolower(trim($selectedType)) : 'all';
         $selectedType = in_array($selectedType, [...self::ALLOWED_MEDIA_TYPES, 'all'], true) ? $selectedType : 'all';
+
+        // Collection : uniquement applicable aux photos, lettres/chiffres/tirets/underscores.
+        $rawCollection = $this->request->getGet('collection');
+        $selectedCollection = is_string($rawCollection) ? trim($rawCollection) : null;
+        $selectedCollection = ($selectedCollection !== null && $selectedCollection !== '' && preg_match('/^[a-z0-9_-]+$/i', $selectedCollection) === 1)
+            ? strtolower($selectedCollection)
+            : null;
 
         $limit = $this->request->getGet('limit');
         $limit = is_string($limit) && ctype_digit($limit) ? (int) $limit : 50;
@@ -148,10 +182,15 @@ final class MediaController extends BaseController
 
         $typesToLoad = $selectedType === 'all' ? self::ALLOWED_MEDIA_TYPES : [$selectedType];
 
+        // Récupère les collections disponibles pour les photos afin de les proposer dans le filtre.
+        $photoCollections = $this->mediaService->listCollections('photo');
+
         $catalogueItems = [];
 
         foreach ($typesToLoad as $mediaType) {
-            $mediaFiles = $this->mediaService->listMedia($mediaType, 0);
+            // Filtre par collection uniquement pour les photos.
+            $collectionForType = ($mediaType === 'photo') ? $selectedCollection : null;
+            $mediaFiles = $this->mediaService->listMedia($mediaType, 0, $collectionForType);
 
             foreach ($mediaFiles as $mediaFile) {
                 $catalogueItems[] = [
@@ -160,6 +199,7 @@ final class MediaController extends BaseController
                     'fileName' => $mediaFile->getFileName(),
                     'mimeType' => $mediaFile->getMimeType(),
                     'fileSize' => $mediaFile->getFileSize(),
+                    'collection' => $mediaFile->getCollection(),
                     'url' => site_url($mediaType) . '?' . http_build_query(['id' => $mediaFile->getId()]),
                 ];
             }
@@ -185,12 +225,18 @@ final class MediaController extends BaseController
             );
         }
 
-        $shuffleUrl = site_url('catalogue') . '?' . http_build_query([
-            'type' => $selectedType,
+        $shuffleParams = [
+            'type'  => $selectedType,
             'limit' => $limit,
-            'page' => 1,
+            'page'  => 1,
             'shuffle' => strtolower(bin2hex(random_bytes(6))),
-        ]);
+        ];
+
+        if ($selectedCollection !== null) {
+            $shuffleParams['collection'] = $selectedCollection;
+        }
+
+        $shuffleUrl = site_url('catalogue') . '?' . http_build_query($shuffleParams);
 
         $totalItems = count($catalogueItems);
         $totalPages = max(1, (int) ceil($totalItems / $limit));
@@ -201,17 +247,20 @@ final class MediaController extends BaseController
         return $this->response
             ->setContentType('text/html; charset=UTF-8')
             ->setBody(view('catalogue/index', [
-                'items' => $catalogueItems,
-                'selectedType' => $selectedType,
-                'limit' => $limit,
-                'currentPage' => $currentPage,
-                'totalPages' => $totalPages,
-                'totalItems' => $totalItems,
-                'shuffleSeed' => $shuffleSeed,
-                'shuffleUrl' => $shuffleUrl,
-                'idsMissingCount' => $syncReport['missing'],
-                'idsWereSynced' => $syncReport['synced'],
-                'idsAddedCount' => $syncReport['added'],
+                'items'              => $catalogueItems,
+                'selectedType'       => $selectedType,
+                'selectedCollection' => $selectedCollection,
+                'photoCollections'   => $photoCollections,
+                'limit'              => $limit,
+                'currentPage'        => $currentPage,
+                'totalPages'         => $totalPages,
+                'totalItems'         => $totalItems,
+                'shuffleSeed'        => $shuffleSeed,
+                'shuffleUrl'         => $shuffleUrl,
+                'idsMissingCount'    => $syncReport['missing'],
+                'idsWereSynced'      => $syncReport['synced'],
+                'idsAddedCount'      => $syncReport['added'],
+                'idsRemovedCount'    => $syncReport['removed'],
             ]));
     }
 
@@ -244,6 +293,8 @@ final class MediaController extends BaseController
      * `extension`, `quality`, `bgcolor`) sont parsés et transmis au service.
      * L'extension issue de l'URL (ex. `/photo.webp`) est utilisée comme format par défaut
      * si le paramètre `extension` n'est pas fourni en query string.
+     * Le paramètre `?collection=` permet de restreindre la sélection aléatoire à une
+     * collection (sous-dossier) donnée.
      * Pour les vidéos et les logos, ces paramètres sont ignorés silencieusement.
      *
      * @param string      $mediaType    Le type de média à renvoyer.
@@ -253,6 +304,12 @@ final class MediaController extends BaseController
     {
         $id = $this->request->getGet('id');
         $id = is_string($id) ? strtolower(trim($id)) : null;
+
+        // Collection (sous-dossier) : uniquement lettres, chiffres, tirets et underscores.
+        $collection = $this->getNullableQueryString('collection');
+        $collection = ($collection !== null && preg_match('/^[a-z0-9_-]+$/i', $collection) === 1)
+            ? strtolower(trim($collection))
+            : null;
 
         if ($id !== null && $id !== '') {
             $media = $this->mediaService->getMediaById($mediaType, $id);
@@ -270,7 +327,7 @@ final class MediaController extends BaseController
         $seed = $this->request->getGet('seed');
         $seed = is_string($seed) ? $seed : null;
 
-        $media = $this->mediaService->pickMedia($mediaType, $seed);
+        $media = $this->mediaService->pickMedia($mediaType, $seed, $collection);
 
         return $this->createMediaResponse($media, $mediaType, $urlExtension);
     }
@@ -321,6 +378,10 @@ final class MediaController extends BaseController
      * le paramètre `extension` n'est pas fourni en query string.
      * Pour les autres types, aucune transformation n'est effectuée.
      *
+     * Quand un ID stable est précisé dans la requête (`?id=`), le fichier retourné
+     * est toujours le même : on peut envoyer un Cache-Control public pour éviter
+     * que le navigateur ne répète des appels PHP inutiles (important sur serveur mutualisé).
+     *
      * @param MediaFile|null $media         Le média résolu à renvoyer.
      * @param string         $mediaType     Le type du média (`photo`, `video`, `logo`).
      * @param string|null    $urlExtension  L'extension extraite de l'URL, ou null si absente.
@@ -365,11 +426,19 @@ final class MediaController extends BaseController
                 ->setJSON(['error' => 'Impossible de préparer la réponse du média.']);
         }
 
+        // Un ID stable garantit que l'URL retournera toujours le même fichier :
+        // on peut mettre en cache côté navigateur (1 heure) pour éviter des appels PHP
+        // redondants, notamment lors du chargement du catalogue sur un serveur mutualisé.
+        // Sans ID (sélection aléatoire), on force no-store pour ne pas servir le mauvais média.
+        $requestId = $this->request->getGet('id');
+        $hasStableId = is_string($requestId) && $requestId !== '';
+        $cacheControl = $hasStableId ? 'public, max-age=3600, immutable' : 'no-store';
+
         return $downloadResponse
             ->setFileName($media->getFileName())
             ->setHeader('Content-Type', $media->getMimeType())
             ->setHeader('Content-Length', (string) $media->getFileSize())
-            ->setHeader('Cache-Control', 'no-store')
+            ->setHeader('Cache-Control', $cacheControl)
             ->inline();
     }
 

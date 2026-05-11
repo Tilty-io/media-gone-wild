@@ -41,6 +41,14 @@ $initialModalUrl = site_url('photo') . '?' . http_build_query(['id' => $defaultD
                     class="absolute left-1/2 top-1/2 h-auto w-auto max-w-none"
                     style="transform: translate(-50%, -50%) scale(1); transform-origin: center center; transition: transform 0.12s ease;">
 
+                <!-- Overlay de chargement : masque l'ancienne image pendant le chargement de la nouvelle -->
+                <div id="modal-preview-loading"
+                     class="absolute inset-0 z-10 hidden items-center justify-center bg-base-200">
+                    <div class="flex flex-col items-center gap-2 opacity-50">
+                        <span class="loading loading-spinner loading-md text-primary"></span>
+                    </div>
+                </div>
+
                 <!-- Contrôles de zoom -->
                 <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-0.5 rounded-full bg-base-100/80 px-2 py-1 shadow backdrop-blur">
                     <button type="button" id="modal-zoom-out"

@@ -54,15 +54,16 @@ final class MediaService
     /**
      * Sélectionne un média pour un type donné et prépare ses informations de réponse.
      *
-     * @param string $mediaType Le type de média à récupérer.
-     * @param string|null $seed Le seed optionnel utilisé pour une sélection déterministe.
+     * @param string      $mediaType  Le type de média à récupérer.
+     * @param string|null $seed       Le seed optionnel utilisé pour une sélection déterministe.
+     * @param string|null $collection La collection (sous-dossier) à cibler, ou null pour tout le type.
      *
      * @return MediaFile|null La description du média choisi, ou null si aucun fichier n'est disponible.
      */
-    public function pickMedia(string $mediaType, ?string $seed = null): ?MediaFile
+    public function pickMedia(string $mediaType, ?string $seed = null, ?string $collection = null): ?MediaFile
     {
         $normalizedSeed = $this->normalizeSeed($seed);
-        $mediaPath = $this->mediaRepository->pick($mediaType, $normalizedSeed);
+        $mediaPath = $this->mediaRepository->pick($mediaType, $normalizedSeed, $collection);
 
         return $mediaPath !== null ? $this->createMediaFile($mediaPath) : null;
     }
@@ -83,27 +84,41 @@ final class MediaService
     }
 
     /**
-     * Synchronise les IDs manquants pour le catalogue en développement.
+     * Synchronise les IDs manquants et purge les entrées orphelines pour le catalogue en développement.
      *
-     * @return array{synced: bool, added: int, missing: int} Le bilan de synchronisation.
+     * @return array{synced: bool, added: int, removed: int, missing: int} Le bilan de synchronisation.
      */
     public function syncIdsForCatalogueIfNeeded(): array
     {
-        $missingBefore = $this->mediaRepository->countMissingIds();
+        $missingBefore  = $this->mediaRepository->countMissingIds();
+        $orphanedBefore = $this->mediaRepository->countOrphanedIds();
 
-        if (! $this->isDevelopmentEnvironment() || $missingBefore === 0) {
+        if (! $this->isDevelopmentEnvironment() || ($missingBefore === 0 && $orphanedBefore === 0)) {
             return [
-                'synced' => false,
-                'added' => 0,
+                'synced'  => false,
+                'added'   => 0,
+                'removed' => 0,
                 'missing' => $missingBefore,
             ];
         }
 
-        $result = $this->mediaRepository->syncIdsManifest();
+        $added   = 0;
+        $removed = 0;
+
+        if ($orphanedBefore > 0) {
+            $cleanupResult = $this->mediaRepository->cleanupOrphanedIds();
+            $removed = $cleanupResult['removed'];
+        }
+
+        if ($missingBefore > 0) {
+            $syncResult = $this->mediaRepository->syncIdsManifest();
+            $added = $syncResult['added'];
+        }
 
         return [
-            'synced' => true,
-            'added' => $result['added'],
+            'synced'  => $added > 0 || $removed > 0,
+            'added'   => $added,
+            'removed' => $removed,
             'missing' => $this->mediaRepository->countMissingIds(),
         ];
     }
@@ -129,16 +144,37 @@ final class MediaService
     }
 
     /**
+     * Purge du manifeste les entrées correspondant à des fichiers supprimés du disque.
+     *
+     * @param bool $dryRun Si true, simule sans écrire sur disque.
+     *
+     * @return array{removed: int, total: int, changed: bool} Le résultat du nettoyage.
+     */
+    public function cleanupOrphanedIds(bool $dryRun = false): array
+    {
+        return $this->mediaRepository->cleanupOrphanedIds($dryRun);
+    }
+
+    /**
+     * Retourne le nombre d'entrées orphelines dans le manifeste (fichiers supprimés).
+     */
+    public function countOrphanedIds(): int
+    {
+        return $this->mediaRepository->countOrphanedIds();
+    }
+
+    /**
      * Liste les médias disponibles pour un type donné.
      *
-     * @param string $mediaType Le type de média à récupérer.
-     * @param int $limit Le nombre maximum d'éléments à renvoyer.
+     * @param string      $mediaType  Le type de média à récupérer.
+     * @param int         $limit      Le nombre maximum d'éléments à renvoyer (0 = illimité).
+     * @param string|null $collection La collection (sous-dossier) à filtrer, ou null pour tout le type.
      *
      * @return list<MediaFile> Les médias disponibles, limités au volume demandé.
      */
-    public function listMedia(string $mediaType, int $limit = 24): array
+    public function listMedia(string $mediaType, int $limit = 24, ?string $collection = null): array
     {
-        $entries = $this->mediaRepository->listEntries($mediaType);
+        $entries = $this->mediaRepository->listEntries($mediaType, $collection);
 
         if ($limit > 0) {
             $entries = array_slice($entries, 0, $limit);
@@ -148,6 +184,18 @@ final class MediaService
             fn (array $entry): MediaFile => $this->createMediaFile($entry['path']),
             $entries,
         );
+    }
+
+    /**
+     * Retourne les noms des collections disponibles pour un type de média.
+     *
+     * @param string $mediaType Le type de média à inspecter.
+     *
+     * @return list<string> Les noms de collections triés par ordre alphabétique.
+     */
+    public function listCollections(string $mediaType): array
+    {
+        return $this->mediaRepository->listCollections($mediaType);
     }
 
     /**
@@ -213,6 +261,8 @@ final class MediaService
             throw new \LogicException('Chaque média doit disposer d\'un identifiant stable avant d\'être servi.');
         }
 
+        $collection = $this->mediaRepository->getCollectionByPath($mediaPath);
+
         return new MediaFile(
             $mediaPath,
             $mediaId,
@@ -220,6 +270,7 @@ final class MediaService
             $this->resolveMimeType($mediaPath),
             $fileSize,
             $isReadable,
+            $collection,
         );
     }
 

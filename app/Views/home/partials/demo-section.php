@@ -38,7 +38,7 @@ $photoPickerItems = array_map(
                     <span class="flex items-center gap-2">
                         <span class="avatar">
                             <span class="h-7 w-7 rounded bg-base-300">
-                                <img id="home-photo-id-preview" src="<?= esc(site_url('photo') . '?' . http_build_query(['id' => $defaultDemoPhotoId])) ?>" alt="Aperçu de l'ID sélectionné" class="h-full w-full object-cover">
+                                <img id="home-photo-id-preview" src="<?= esc(site_url('photo') . '?' . http_build_query(['id' => $defaultDemoPhotoId])) ?>" alt="Aperçu de l'ID sélectionné" loading="lazy" class="h-full w-full object-cover">
                             </span>
                         </span>
                         <span id="home-photo-id-display" class="font-mono text-xs"><?= esc($defaultDemoPhotoId) ?></span>

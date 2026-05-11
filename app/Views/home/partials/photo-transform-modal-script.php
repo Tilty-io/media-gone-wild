@@ -35,6 +35,7 @@
 
         // --- Zoom de l'aperçu ---
         var previewContainer = document.getElementById('modal-preview-container');
+        var previewLoading   = document.getElementById('modal-preview-loading');
         var zoomOutBtn       = document.getElementById('modal-zoom-out');
         var zoomInBtn        = document.getElementById('modal-zoom-in');
         var zoomAutoBtn      = document.getElementById('modal-zoom-auto');
@@ -44,8 +45,33 @@
         var currentZoom   = 'auto'; // 'auto' ou nombre
         var autoZoomValue = 1;
 
+        /** Dernier src affecté à l'aperçu (permet de détecter un vrai changement d'URL). */
+        var lastPreviewSrc = '';
+
         if (!modal || !modalForm || !modalIdInput) {
             return;
+        }
+
+        // --- Overlay de chargement ---
+
+        /**
+         * Affiche l'overlay de chargement devant l'image (masque l'ancienne image immédiatement).
+         */
+        function showPreviewLoading() {
+            if (previewLoading) {
+                previewLoading.classList.remove('hidden');
+                previewLoading.classList.add('flex');
+            }
+        }
+
+        /**
+         * Masque l'overlay de chargement une fois la nouvelle image disponible.
+         */
+        function hidePreviewLoading() {
+            if (previewLoading) {
+                previewLoading.classList.add('hidden');
+                previewLoading.classList.remove('flex');
+            }
         }
 
         // --- Utilitaires couleur ---
@@ -282,9 +308,15 @@
             }
         }
 
-        // Recalcule le zoom auto quand l'image change.
+        // Recalcule le zoom auto quand l'image change + masque l'overlay.
         if (modalPreview) {
-            modalPreview.addEventListener('load', recalcAutoZoom);
+            modalPreview.addEventListener('load', function () {
+                hidePreviewLoading();
+                recalcAutoZoom();
+            });
+            modalPreview.addEventListener('error', function () {
+                hidePreviewLoading();
+            });
         }
 
         // Recalcule quand le container est redimensionné (ex. ouverture du dialog, resize fenêtre).
@@ -415,7 +447,14 @@
 
             modalUrlLink.href        = cleanUrl;
             modalUrlLink.textContent = cleanUrl;
-            modalPreview.src         = previewSrc;
+
+            // Affiche l'overlay dès que l'URL de prévisualisation change réellement.
+            if (previewSrc !== lastPreviewSrc) {
+                lastPreviewSrc = previewSrc;
+                showPreviewLoading();
+                modalPreview.src = previewSrc;
+            }
+
             modalStatus.textContent  = id === '' ? 'Photo aléatoire.' : '';
 
             // Panneaux d'info (originalUrl = photo sans transforms, cleanUrl = photo transformée)
@@ -425,6 +464,17 @@
 
         // --- Ouverture de la modale depuis une URL externe ---
 
+        /**
+         * Ouvre la modale pour une URL média donnée.
+         *
+         * Comportement selon le contenu de l'URL :
+         * - URL avec des paramètres de transformation explicites (width, height, fit…) :
+         *   le formulaire est réinitialisé et les paramètres de l'URL sont appliqués.
+         *   C'est le cas des exemples directs et des liens préconfigurés.
+         * - URL avec uniquement un ID (ou sans paramètres) :
+         *   seul l'ID change ; tous les autres réglages en cours sont conservés
+         *   d'une photo à l'autre.
+         */
         function openTransformModalFromUrl(url) {
             if (!modal || !modalForm || !modalIdInput) {
                 return;
@@ -436,25 +486,36 @@
                 return;
             }
 
-            modalForm.reset();
-            syncModalBgcolorControlsFromToken('');
-
-            modalIdInput.value = parsed.id;
-
-            ['width', 'height', 'fit', 'extension', 'quality', 'bgcolor'].forEach(function (name) {
-                var field = modalForm.querySelector('[name="' + name + '"]');
-                if (!field) { return; }
-                field.value = parsed.params[name] || '';
+            // Détermine si l'URL contient des paramètres de transformation explicites.
+            var TRANSFORM_PARAMS = ['width', 'height', 'fit', 'extension', 'quality', 'bgcolor'];
+            var hasExplicitParams = TRANSFORM_PARAMS.some(function (name) {
+                return parsed.params[name] !== undefined && parsed.params[name] !== '';
             });
 
-            // Synchronise le slider de qualité
-            if (modalQualityInput && modalQualityValue) {
-                var q = parsed.params.quality || '85';
-                modalQualityInput.value  = q;
-                modalQualityValue.textContent = q;
-            }
+            if (hasExplicitParams) {
+                // Réinitialise le formulaire et applique les paramètres de l'URL.
+                modalForm.reset();
+                syncModalBgcolorControlsFromToken('');
 
-            syncModalBgcolorControlsFromToken(parsed.params.bgcolor || '');
+                TRANSFORM_PARAMS.forEach(function (name) {
+                    var field = modalForm.querySelector('[name="' + name + '"]');
+                    if (!field) { return; }
+                    field.value = parsed.params[name] || '';
+                });
+
+                // Synchronise le slider de qualité
+                if (modalQualityInput && modalQualityValue) {
+                    var q = parsed.params.quality || '85';
+                    modalQualityInput.value  = q;
+                    modalQualityValue.textContent = q;
+                }
+
+                syncModalBgcolorControlsFromToken(parsed.params.bgcolor || '');
+            }
+            // Sinon : URL avec ID seul → on garde tous les réglages du formulaire en place.
+            // Seul l'ID est mis à jour ci-dessous.
+
+            modalIdInput.value = parsed.id;
             currentZoom = 'auto';
             updateModalUrl();
 

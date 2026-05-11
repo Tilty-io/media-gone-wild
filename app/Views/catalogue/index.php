@@ -21,8 +21,10 @@
         }
 </style>
 <?php
-    /** @var list<array{type: string, id: string, fileName: string, mimeType: string, fileSize: int, url: string}> $items */
+    /** @var list<array{type: string, id: string, fileName: string, mimeType: string, fileSize: int, collection: string|null, url: string}> $items */
     /** @var string $selectedType */
+    /** @var string|null $selectedCollection */
+    /** @var list<string> $photoCollections */
     /** @var int $limit */
     /** @var int $currentPage */
     /** @var int $totalPages */
@@ -32,6 +34,7 @@
     /** @var int $idsMissingCount */
     /** @var bool $idsWereSynced */
     /** @var int $idsAddedCount */
+    /** @var int $idsRemovedCount */
 
     $photoItems = array_values(array_filter(
         $items,
@@ -65,12 +68,16 @@
         return site_url('photo') . '?' . http_build_query($query);
     };
 
-    $buildCatalogueUrl = static function (int $page) use ($selectedType, $limit, $shuffleSeed): string {
+    $buildCatalogueUrl = static function (int $page) use ($selectedType, $selectedCollection, $limit, $shuffleSeed): string {
         $query = [
             'type' => $selectedType,
             'limit' => $limit,
             'page' => $page,
         ];
+
+        if ($selectedCollection !== null) {
+            $query['collection'] = $selectedCollection;
+        }
 
         if ($shuffleSeed !== null) {
             $query['shuffle'] = $shuffleSeed;
@@ -106,7 +113,15 @@
             <p class="mt-2 text-sm opacity-80">Filtre par type et explore les fichiers disponibles.</p>
         </header>
 
-        <?php if ($idsWereSynced): ?>
+        <?php if ($idsWereSynced && $idsRemovedCount > 0): ?>
+            <section class="alert alert-warning mb-6 text-sm">
+                Nettoyage automatique effectué : <?= esc((string) $idsRemovedCount) ?> ID(s) orphelin(s) supprimé(s) du manifeste
+                (fichier(s) introuvable(s) sur le disque).
+                <?php if ($idsAddedCount > 0): ?>
+                    <?= esc((string) $idsAddedCount) ?> nouveau(x) média(s) indexé(s) en même temps.
+                <?php endif; ?>
+            </section>
+        <?php elseif ($idsWereSynced): ?>
             <section class="alert alert-success mb-6 text-sm">
                 Synchronisation automatique des IDs effectuée (<?= esc((string) $idsAddedCount) ?> média(s) ajouté(s) au manifeste).
             </section>
@@ -132,6 +147,22 @@
                         <option value="logo" <?= $selectedType === 'logo' ? 'selected' : '' ?>>Logo</option>
                     </select>
                 </label>
+
+                <?php if ($photoCollections !== [] && in_array($selectedType, ['photo', 'all'], true)): ?>
+                    <label class="form-control">
+                        <span class="label-text text-sm">Collection</span>
+                        <select name="collection" class="select select-bordered" onchange="this.form.submit()">
+                            <option value="" <?= $selectedCollection === null ? 'selected' : '' ?>>Toutes</option>
+                            <?php foreach ($photoCollections as $col): ?>
+                                <option value="<?= esc($col) ?>" <?= $selectedCollection === $col ? 'selected' : '' ?>>
+                                    Photos / <?= esc($col) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                <?php else: ?>
+                    <input type="hidden" name="collection" value="">
+                <?php endif; ?>
 
                 <label class="form-control">
                     <span class="label-text text-sm">Limite</span>
@@ -213,7 +244,7 @@
                     >
                         <div class="media-preview-checkerboard aspect-video <?= $item['type'] === 'logo' ? 'p-4' : '' ?>">
                             <?php if (str_starts_with($item['mimeType'], 'image/')): ?>
-                                <img src="<?= esc($item['url']) ?>" alt="<?= esc($item['fileName']) ?>" class="h-full w-full object-contain">
+                                <img src="<?= esc($item['url']) ?>" alt="<?= esc($item['fileName']) ?>" loading="lazy" class="h-full w-full object-contain">
                             <?php elseif (str_starts_with($item['mimeType'], 'video/')): ?>
                                 <video src="<?= esc($item['url']) ?>" class="h-full w-full" controls preload="metadata"></video>
                             <?php else: ?>
@@ -223,9 +254,16 @@
 
                         <div class="card-body space-y-3 p-4">
                             <div class="flex items-center justify-between gap-3">
-                                <span class="badge badge-outline uppercase">
-                                    <?= esc($item['type']) ?>
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <span class="badge badge-outline badge-sm uppercase">
+                                        <?= esc($item['type']) ?>
+                                    </span>
+                                    <?php if ($item['type'] === 'photo' && $item['collection'] !== null): ?>
+                                        <span class="badge badge-secondary badge-sm uppercase">
+                                            <?= esc($item['collection']) ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
                                 <span class="text-xs opacity-70"><?= esc($formatFileSize((int) $item['fileSize'])) ?></span>
                             </div>
 
@@ -234,20 +272,41 @@
                             </p>
 
                             <div class="rounded-lg border border-base-300 bg-base-200 px-3 py-2">
-                                <p class="text-[11px] uppercase tracking-wide opacity-70">ID</p>
-                                <p class="mt-1 font-mono text-sm text-success"><?= esc($item['id']) ?></p>
-                            </div>
-
-                            <div class="flex flex-wrap gap-2">
-                                <a href="<?= esc($item['url']) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Ouvrir par ID</a>
-                                <?php if ($item['type'] === 'photo'): ?>
-                                    <button
-                                        type="button"
-                                        class="btn btn-primary btn-sm js-use-photo-transform"
-                                        data-photo-id="<?= esc($item['id']) ?>"
-                                        data-photo-name="<?= esc($item['fileName']) ?>"
-                                    >Transformer</button>
-                                <?php endif; ?>
+                                <div class="flex items-center justify-between gap-2">
+                                    <div>
+                                        <p class="text-[11px] uppercase tracking-wide opacity-70">ID</p>
+                                        <p class="mt-0.5 font-mono text-sm text-success"><?= esc($item['id']) ?></p>
+                                    </div>
+                                    <div class="flex items-center gap-0.5 shrink-0">
+                                        <!-- Ouvrir dans un nouvel onglet -->
+                                        <a href="<?= esc($item['url']) ?>"
+                                           target="_blank" rel="noopener"
+                                           class="btn btn-ghost btn-xs"
+                                           aria-label="Ouvrir dans un nouvel onglet"
+                                           title="Ouvrir par ID">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                                        </a>
+                                        <!-- Copier l'URL -->
+                                        <button type="button"
+                                                class="btn btn-ghost btn-xs"
+                                                data-catalogue-copy="<?= esc($item['url']) ?>"
+                                                aria-label="Copier l'URL"
+                                                title="Copier l'URL">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5"><path d="M9 7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V7Z"/><path d="M5 3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h1v-2H5V5h8V4a1 1 0 0 0-1-1H5Z"/></svg>
+                                        </button>
+                                        <?php if ($item['type'] === 'photo'): ?>
+                                            <!-- Ouvrir dans le générateur -->
+                                            <button type="button"
+                                                    class="btn btn-ghost btn-xs js-use-photo-transform"
+                                                    data-photo-id="<?= esc($item['id']) ?>"
+                                                    data-photo-name="<?= esc($item['fileName']) ?>"
+                                                    aria-label="Ouvrir le générateur"
+                                                    title="Transformer">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-3.5 w-3.5"><path d="M14.5 2a.75.75 0 0 1 .73.57l1.02 4.09 4.09 1.02a.75.75 0 0 1 0 1.46l-4.09 1.02-1.02 4.09a.75.75 0 0 1-1.46 0l-1.02-4.09-4.09-1.02a.75.75 0 0 1 0-1.46l4.09-1.02 1.02-4.09A.75.75 0 0 1 14.5 2Z"/><path d="M6 13.25a.75.75 0 0 1 .73.57l.45 1.79 1.79.45a.75.75 0 0 1 0 1.46l-1.79.45-.45 1.79a.75.75 0 0 1-1.46 0l-.45-1.79-1.79-.45a.75.75 0 0 1 0-1.46l1.79-.45.45-1.79A.75.75 0 0 1 6 13.25Z"/></svg>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
                             </div>
 
                             <?php if ($photoExamples !== []): ?>
@@ -367,6 +426,16 @@
 
                 // Clic sur "Transformer" sur une carte photo
                 document.addEventListener('click', function (event) {
+                    // Icône copier dans une carte catalogue
+                    var copyBtn = event.target.closest('[data-catalogue-copy]');
+                    if (copyBtn) {
+                        var urlToCopy = copyBtn.getAttribute('data-catalogue-copy') || '';
+                        if (navigator.clipboard && urlToCopy) {
+                            navigator.clipboard.writeText(urlToCopy).then(showToast);
+                        }
+                        return;
+                    }
+
                     var button = event.target.closest('.js-use-photo-transform');
                     if (button) {
                         var nextId = button.getAttribute('data-photo-id') || '';
