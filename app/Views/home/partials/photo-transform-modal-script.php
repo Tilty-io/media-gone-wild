@@ -33,6 +33,17 @@
         var originalInfoEl = document.getElementById('home-photo-transform-original-info');
         var resultInfoEl   = document.getElementById('home-photo-transform-result-info');
 
+        // --- Zoom de l'aperçu ---
+        var previewContainer = document.getElementById('modal-preview-container');
+        var zoomOutBtn       = document.getElementById('modal-zoom-out');
+        var zoomInBtn        = document.getElementById('modal-zoom-in');
+        var zoomAutoBtn      = document.getElementById('modal-zoom-auto');
+        var zoomLabel        = document.getElementById('modal-zoom-label');
+
+        var ZOOM_STEPS    = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
+        var currentZoom   = 'auto'; // 'auto' ou nombre
+        var autoZoomValue = 1;
+
         if (!modal || !modalForm || !modalIdInput) {
             return;
         }
@@ -231,6 +242,85 @@
             }, 500);
         }
 
+        // --- Zoom de l'aperçu ---
+
+        /**
+         * Calcule le facteur de zoom pour que l'image remplisse le container (mode contain).
+         * Prend en compte les dimensions réelles de l'image et celles du container.
+         */
+        function calculateAutoZoom() {
+            if (!modalPreview || !previewContainer) { return 1; }
+            var iw = modalPreview.naturalWidth  || 0;
+            var ih = modalPreview.naturalHeight || 0;
+            if (!iw || !ih) { return 1; }
+            var cw = previewContainer.clientWidth;
+            var ch = previewContainer.clientHeight;
+            if (!cw || !ch) { return 1; }
+            return Math.min(cw / iw, ch / ih);
+        }
+
+        function getEffectiveZoom() {
+            return currentZoom === 'auto' ? autoZoomValue : currentZoom;
+        }
+
+        function applyZoom() {
+            var scale = getEffectiveZoom();
+            if (modalPreview) {
+                modalPreview.style.transform = 'translate(-50%, -50%) scale(' + scale + ')';
+            }
+            if (zoomLabel) {
+                zoomLabel.textContent = currentZoom === 'auto'
+                    ? 'Auto'
+                    : Math.round(scale * 100) + '\u00a0%';
+            }
+        }
+
+        function recalcAutoZoom() {
+            autoZoomValue = calculateAutoZoom();
+            if (currentZoom === 'auto') {
+                applyZoom();
+            }
+        }
+
+        // Recalcule le zoom auto quand l'image change.
+        if (modalPreview) {
+            modalPreview.addEventListener('load', recalcAutoZoom);
+        }
+
+        // Recalcule quand le container est redimensionné (ex. ouverture du dialog, resize fenêtre).
+        if (window.ResizeObserver && previewContainer) {
+            new ResizeObserver(recalcAutoZoom).observe(previewContainer);
+        }
+
+        if (zoomInBtn) {
+            zoomInBtn.addEventListener('click', function () {
+                var current = getEffectiveZoom();
+                var next = null;
+                for (var i = 0; i < ZOOM_STEPS.length; i++) {
+                    if (ZOOM_STEPS[i] > current + 0.001) { next = ZOOM_STEPS[i]; break; }
+                }
+                if (next !== null) { currentZoom = next; applyZoom(); }
+            });
+        }
+
+        if (zoomOutBtn) {
+            zoomOutBtn.addEventListener('click', function () {
+                var current = getEffectiveZoom();
+                var prev = null;
+                for (var i = 0; i < ZOOM_STEPS.length; i++) {
+                    if (ZOOM_STEPS[i] < current - 0.001) { prev = ZOOM_STEPS[i]; }
+                }
+                if (prev !== null) { currentZoom = prev; applyZoom(); }
+            });
+        }
+
+        if (zoomAutoBtn) {
+            zoomAutoBtn.addEventListener('click', function () {
+                currentZoom = 'auto';
+                recalcAutoZoom();
+            });
+        }
+
         // --- Construction et analyse d'URL ---
 
         /**
@@ -365,6 +455,7 @@
             }
 
             syncModalBgcolorControlsFromToken(parsed.params.bgcolor || '');
+            currentZoom = 'auto';
             updateModalUrl();
 
             if (typeof modal.showModal === 'function') {
@@ -419,6 +510,7 @@
                 modalIdInput.value = HomeApp.getPhotoId();
                 if (modalQualityValue) { modalQualityValue.textContent = '85'; }
                 syncModalBgcolorControlsFromToken('');
+                currentZoom = 'auto';
                 updateModalUrl();
             });
         }

@@ -164,119 +164,7 @@
                 </div>
             </section>
 
-            <dialog id="photo-transform-modal" class="modal">
-                <div class="modal-box w-11/12 max-w-5xl">
-                    <form method="dialog" class="absolute right-2 top-2">
-                        <button class="btn btn-circle btn-ghost btn-sm" aria-label="Fermer">✕</button>
-                    </form>
-
-                    <p class="text-xs font-semibold uppercase tracking-wider text-primary">Générateur d'URL photo</p>
-                    <h2 id="photo-transform-modal-title" class="mt-1 text-xl font-semibold">Compose une URL de transformation prête à copier</h2>
-
-                    <div class="mt-3 rounded-lg border border-base-300 bg-base-200 px-3 py-2 text-xs opacity-80">
-                        <p>Alpha sur 8 caractères : <code class="rounded bg-base-300 px-1">ffffff00</code> = transparent</p>
-                        <p><code class="rounded bg-base-300 px-1">ffffff80</code> = semi-transparent, <code class="rounded bg-base-300 px-1">transparent</code> = alias de <code class="rounded bg-base-300 px-1">00000000</code></p>
-                    </div>
-
-                    <form
-                        id="photo-transform-builder"
-                        class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
-                        data-base-url="<?= esc(site_url('photo')) ?>"
-                        data-default-id="<?= esc($defaultPhotoId) ?>"
-                    >
-                    <label class="form-control xl:col-span-2">
-                        <span class="label-text text-sm">ID photo exact</span>
-                        <input id="photo-transform-id" name="id" type="text" value="<?= esc($defaultPhotoId) ?>" placeholder="abc123def456" class="input input-bordered font-mono">
-                    </label>
-
-                    <label class="form-control">
-                        <span class="label-text text-sm">Largeur</span>
-                        <input name="width" type="number" min="1" step="1" placeholder="800" class="input input-bordered">
-                    </label>
-
-                    <label class="form-control">
-                        <span class="label-text text-sm">Hauteur</span>
-                        <input name="height" type="number" min="1" step="1" placeholder="600" class="input input-bordered">
-                    </label>
-
-                    <label class="form-control">
-                        <span class="label-text text-sm">Fit</span>
-                        <select name="fit" class="select select-bordered">
-                            <option value="">contain (par défaut si width + height)</option>
-                            <?php foreach ($allowedFitModes as $fitMode): ?>
-                                <option value="<?= esc($fitMode) ?>"><?= esc($fitMode) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-
-                    <label class="form-control">
-                        <span class="label-text text-sm">Extension</span>
-                        <select name="extension" class="select select-bordered">
-                            <option value="">Originale</option>
-                            <?php foreach ($allowedExtensions as $extension): ?>
-                                <option value="<?= esc($extension) ?>"><?= esc($extension) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-
-                    <label class="form-control">
-                        <span class="label-text text-sm">Qualité</span>
-                        <input name="quality" type="number" min="1" max="100" step="1" value="85" class="input input-bordered">
-                    </label>
-
-                    <label class="form-control">
-                        <span class="label-text text-sm">Couleur de fond</span>
-                        <input name="bgcolor" type="text" placeholder="ffffff00 ou transparent" class="input input-bordered font-mono">
-                    </label>
-
-                    <div class="form-control xl:col-span-4">
-                        <span class="label-text text-sm">URL générée (clique pour copier)</span>
-                        <div
-                            id="photo-transform-url"
-                            class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-base-200 px-3 py-3 font-mono text-sm md:text-base cursor-copy"
-                            role="button"
-                            tabindex="0"
-                            title="Clique pour copier l'URL générée"
-                        ></div>
-                    </div>
-
-                    <div class="xl:col-span-4 rounded-lg border border-base-300 bg-base-200 p-3">
-                        <p class="text-[11px] font-semibold uppercase tracking-wide opacity-70">Aperçu direct</p>
-                        <div class="media-preview-checkerboard mt-2 flex max-h-[70vh] items-center justify-center overflow-auto rounded-lg border border-base-300 bg-base-100 p-2">
-                            <img
-                                id="photo-transform-preview"
-                                src=""
-                                alt="Aperçu de l'image générée"
-                                loading="lazy"
-                                class="h-auto w-auto max-w-none"
-                            >
-                            <div id="photo-transform-preview-placeholder" class="flex min-h-56 min-w-full items-center justify-center px-4 text-center text-sm opacity-70">
-                                L'aperçu s'affiche ici dès qu'un ID photo valide est renseigné.
-                            </div>
-                        </div>
-                        <p id="photo-transform-preview-status" class="mt-2 text-xs opacity-70" aria-live="polite">
-                            En attente d'un ID photo pour afficher l'aperçu.
-                        </p>
-                    </div>
-
-                    <div class="xl:col-span-4 flex flex-wrap items-center gap-3">
-                        <a id="photo-transform-open" href="<?= esc(site_url('photo')) ?>" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Ouvrir l'URL</a>
-                        <button id="photo-transform-copy" type="button" class="btn btn-outline btn-sm">Copier l'URL</button>
-                        <button id="photo-transform-reset" type="button" class="btn btn-ghost btn-sm">Réinitialiser</button>
-                        <p id="photo-transform-status" class="text-sm opacity-70"></p>
-                    </div>
-                    </form>
-
-                    <div class="modal-action">
-                        <form method="dialog">
-                            <button class="btn btn-ghost btn-sm">Fermer</button>
-                        </form>
-                    </div>
-                </div>
-                <form method="dialog" class="modal-backdrop">
-                    <button>Fermer</button>
-                </form>
-            </dialog>
+            <?= view('home/partials/photo-transform-modal', ['defaultDemoPhotoId' => $defaultPhotoId]) ?>
         <?php endif; ?>
 
         <?php if ($items === []): ?>
@@ -448,340 +336,64 @@
     <?php if ($photoItems !== []): ?>
         <script>
             (function () {
-                var builder = document.getElementById('photo-transform-builder');
-                var modal = document.getElementById('photo-transform-modal');
+                var baseUrl = <?= json_encode(site_url('photo'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+                var defaultId = <?= json_encode($defaultPhotoId, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
                 var openDefaultButton = document.getElementById('photo-transform-open-default');
-                var modalTitle = document.getElementById('photo-transform-modal-title');
+                var copyToast = document.getElementById('global-copy-toast');
+                var toastTimer = null;
 
-                if (!builder) {
-                    return;
+                function showToast() {
+                    if (!copyToast) { return; }
+                    copyToast.classList.remove('hidden');
+                    if (toastTimer !== null) { clearTimeout(toastTimer); }
+                    toastTimer = window.setTimeout(function () { copyToast.classList.add('hidden'); }, 1600);
                 }
 
-                var baseUrl = (function () {
-                    // Construit toujours l'endpoint photo sur l'hôte courant
-                    // pour éviter les URLs localhost injectées par une baseURL serveur inadaptée.
-                    var currentPath = window.location.pathname || '/catalogue';
-                    var photoPath = currentPath.replace(/\/catalogue(?:\/.*)?$/, '/photo');
-
-                    if (photoPath === currentPath) {
-                        photoPath = '/photo';
-                    }
-
-                    return window.location.origin + photoPath;
-                })();
-                var defaultId = builder.getAttribute('data-default-id') || '';
-                var output = document.getElementById('photo-transform-url');
-                var status = document.getElementById('photo-transform-status');
-                var openLink = document.getElementById('photo-transform-open');
-                var copyButton = document.getElementById('photo-transform-copy');
-                var resetButton = document.getElementById('photo-transform-reset');
-                var idInput = document.getElementById('photo-transform-id');
-                var previewImage = document.getElementById('photo-transform-preview');
-                var previewPlaceholder = document.getElementById('photo-transform-preview-placeholder');
-                var previewStatus = document.getElementById('photo-transform-preview-status');
-                var previewSequence = 0;
-                var activePhotoId = defaultId;
-                var storageKey = 'mgw-photo-transform-params-v1';
-                var persistedFields = ['width', 'height', 'fit', 'extension', 'quality', 'bgcolor'];
-
-                if (!builder || !modal || !output || !status || !openLink || !copyButton || !resetButton || !idInput || !previewImage || !previewPlaceholder || !previewStatus) {
-                    return;
-                }
-
-                function setStatus(message) {
-                    status.textContent = message;
-                }
-
-                function copyGeneratedUrl() {
-                    var generatedUrl = String(output.textContent || '').trim();
-
-                    if (!generatedUrl) {
-                        setStatus('Aucune URL à copier.');
-                        return;
-                    }
-
-                    if (!navigator.clipboard) {
-                        var range = document.createRange();
-                        range.selectNodeContents(output);
-
-                        var selection = window.getSelection();
-                        if (selection) {
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                        }
-
-                        document.execCommand('copy');
-
-                        if (selection) {
-                            selection.removeAllRanges();
-                        }
-
-                        setStatus('URL copiée.');
-                        return;
-                    }
-
-                    navigator.clipboard.writeText(generatedUrl).then(function () {
-                        setStatus('URL copiée.');
-                    }).catch(function () {
-                        setStatus('Impossible de copier automatiquement l\'URL.');
-                    });
-                }
-
-                function readField(name) {
-                    var field = builder.querySelector('[name="' + name + '"]');
-
-                    if (!field) {
-                        return '';
-                    }
-
-                    return String(field.value || '').trim();
-                }
-
-                function getField(name) {
-                    return builder.querySelector('[name="' + name + '"]');
-                }
-
-                function loadPersistedParams() {
-                    try {
-                        var raw = localStorage.getItem(storageKey);
-
-                        if (!raw) {
-                            return;
-                        }
-
-                        var parsed = JSON.parse(raw);
-
-                        if (!parsed || typeof parsed !== 'object') {
-                            return;
-                        }
-
-                        persistedFields.forEach(function (fieldName) {
-                            var field = getField(fieldName);
-
-                            if (!field || !(fieldName in parsed)) {
-                                return;
-                            }
-
-                            var value = parsed[fieldName];
-                            field.value = typeof value === 'string' ? value : '';
-                        });
-                    } catch (error) {
-                        // Ignore un stockage invalide sans bloquer l'interface.
-                    }
-                }
-
-                function savePersistedParams() {
-                    var payload = {};
-
-                    persistedFields.forEach(function (fieldName) {
-                        payload[fieldName] = readField(fieldName);
-                    });
-
-                    try {
-                        localStorage.setItem(storageKey, JSON.stringify(payload));
-                    } catch (error) {
-                        // Ignore l'absence de localStorage (mode privé, quota, etc.).
-                    }
-                }
-
-                function clearPersistedParams() {
-                    try {
-                        localStorage.removeItem(storageKey);
-                    } catch (error) {
-                        // Ignore silencieusement en cas d'indisponibilité.
-                    }
-                }
-
-                function showPreviewPlaceholder(message) {
-                    previewImage.removeAttribute('src');
-                    previewImage.classList.add('hidden');
-                    previewPlaceholder.classList.remove('hidden');
-                    previewPlaceholder.textContent = message;
-                    previewStatus.textContent = message;
-                }
-
-                function refreshPreview(url, id) {
-                    if (id === '') {
-                        showPreviewPlaceholder('Ajoute un ID photo pour afficher l\'aperçu.');
-                        return;
-                    }
-
-                    var token = String(++previewSequence);
-                    previewImage.dataset.previewToken = token;
-
-                    previewImage.classList.add('hidden');
-                    previewPlaceholder.classList.remove('hidden');
-                    previewPlaceholder.textContent = 'Chargement de l\'aperçu...';
-                    previewStatus.textContent = 'Chargement de l\'aperçu...';
-
-                    // Rend l'image visible pendant le chargement pour éviter un état bloqué en display none.
-                    previewImage.classList.remove('hidden');
-
-                    previewImage.onload = function () {
-                        if (previewImage.dataset.previewToken !== token) {
-                            return;
-                        }
-
-                        previewImage.classList.remove('hidden');
-                        previewPlaceholder.classList.add('hidden');
-                        previewPlaceholder.textContent = '';
-                        previewStatus.textContent = 'Aperçu à jour en taille réelle : ' + previewImage.naturalWidth + '×' + previewImage.naturalHeight + ' px.';
-                    };
-
-                    previewImage.onerror = function () {
-                        if (previewImage.dataset.previewToken !== token) {
-                            return;
-                        }
-
-                        previewImage.classList.add('hidden');
-                        previewPlaceholder.classList.remove('hidden');
-                        previewPlaceholder.textContent = 'Impossible de charger l\'aperçu (ID ou paramètres invalides).';
-                        previewStatus.textContent = 'Erreur de chargement de l\'aperçu.';
-                    };
-
-                    previewImage.src = url;
-                }
-
-                function openModalForPhoto(photoId, photoName) {
-                    if (photoId !== '') {
-                        activePhotoId = photoId;
-                        idInput.value = photoId;
-                    }
-
-                    if (modalTitle) {
-                        modalTitle.textContent = photoName !== ''
-                            ? 'Transformation de ' + photoName
-                            : 'Compose une URL de transformation prête à copier';
-                    }
-
-                    updateUrl();
-
-                    if (typeof modal.showModal === 'function') {
-                        modal.showModal();
-                    }
-                }
-
-                function updateUrl() {
-                    var params = new URLSearchParams();
-                    var id = idInput.value.trim();
-                    var width = readField('width');
-                    var height = readField('height');
-                    var fit = readField('fit');
-                    var extension = readField('extension');
-                    var quality = readField('quality');
-                    var bgcolor = readField('bgcolor');
-
-                    if (id !== '') {
-                        params.set('id', id);
-                    }
-
-                    if (width !== '') {
-                        params.set('width', width);
-                    }
-
-                    if (height !== '') {
-                        params.set('height', height);
-                    }
-
-                    if (fit !== '') {
-                        params.set('fit', fit);
-                    }
-
-                    if (extension !== '') {
-                        params.set('extension', extension);
-                    }
-
-                    if (quality !== '' && quality !== '85') {
-                        params.set('quality', quality);
-                    }
-
-                    if (bgcolor !== '') {
-                        params.set('bgcolor', bgcolor);
-                    }
-
-                    var url = baseUrl + (params.toString() ? '?' + params.toString() : '');
-                    var absoluteUrl = new URL(url, window.location.href).toString();
-
-                    output.textContent = absoluteUrl;
-                    openLink.href = absoluteUrl;
-                    refreshPreview(absoluteUrl, id);
-                }
-
-                builder.addEventListener('input', function () {
-                    setStatus('');
-                    savePersistedParams();
-                    updateUrl();
-                });
-
-                builder.addEventListener('change', function () {
-                    setStatus('');
-                    savePersistedParams();
-                    updateUrl();
-                });
-
-                copyButton.addEventListener('click', function () {
-                    copyGeneratedUrl();
-                });
-
-                output.addEventListener('click', function () {
-                    copyGeneratedUrl();
-                });
-
-                output.addEventListener('keydown', function (event) {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        copyGeneratedUrl();
-                    }
-                });
-
-                resetButton.addEventListener('click', function () {
-                    builder.reset();
-                    idInput.value = activePhotoId || defaultId;
-                    clearPersistedParams();
-                    setStatus('Générateur réinitialisé.');
-                    updateUrl();
-                });
+                // On recrée l'objet HomeApp attendu par photo-transform-modal-script.php
+                window.HomeApp = {
+                    getPhotoId: function () { return defaultId; },
+                    basePhotoPath: baseUrl,
+                    showToast: showToast
+                };
 
                 if (openDefaultButton) {
                     openDefaultButton.addEventListener('click', function () {
-                        openModalForPhoto(activePhotoId || defaultId, '');
+                        if (window.HomeApp.openTransformModal) {
+                            var url = baseUrl + '?id=' + encodeURIComponent(defaultId);
+                            window.HomeApp.openTransformModal(url);
+                        }
                     });
                 }
 
+                // Clic sur "Transformer" sur une carte photo
                 document.addEventListener('click', function (event) {
                     var button = event.target.closest('.js-use-photo-transform');
-
-                    if (!button) {
+                    if (button) {
+                        var nextId = button.getAttribute('data-photo-id') || '';
+                        if (window.HomeApp.openTransformModal && nextId) {
+                            var url = baseUrl + '?id=' + encodeURIComponent(nextId);
+                            window.HomeApp.openTransformModal(url);
+                        }
                         return;
                     }
 
-                    var nextId = button.getAttribute('data-photo-id') || '';
-                    var nextName = button.getAttribute('data-photo-name') || '';
-                    openModalForPhoto(nextId, nextName);
-                    setStatus('ID photo injecté dans le générateur.');
-                });
-
-                document.addEventListener('click', function (event) {
                     var card = event.target.closest('.js-photo-item');
-
-                    if (!card) {
-                        return;
+                    if (card && !event.target.closest('a, button, input, select, textarea, label, video, summary, details')) {
+                        var cardPhotoId = card.getAttribute('data-photo-id') || '';
+                        if (window.HomeApp.openTransformModal && cardPhotoId) {
+                            var cUrl = baseUrl + '?id=' + encodeURIComponent(cardPhotoId);
+                            window.HomeApp.openTransformModal(cUrl);
+                        }
                     }
-
-                    if (event.target.closest('a, button, input, select, textarea, label, video, summary, details')) {
-                        return;
-                    }
-
-                    var cardPhotoId = card.getAttribute('data-photo-id') || '';
-                    var cardPhotoName = card.getAttribute('data-photo-name') || '';
-                    openModalForPhoto(cardPhotoId, cardPhotoName);
-                    setStatus('ID photo injecté dans le générateur.');
                 });
-
-                loadPersistedParams();
-                updateUrl();
             })();
         </script>
+        <?= view('home/partials/photo-transform-modal-script', ['defaultDemoPhotoId' => $defaultPhotoId]) ?>
     <?php endif; ?>
+    <div id="global-copy-toast" class="toast toast-top toast-end hidden z-[60]">
+        <div class="alert alert-success py-2 px-3 text-sm">
+            <span>copié</span>
+        </div>
+    </div>
 <?= view('partials/footer') ?>
 
