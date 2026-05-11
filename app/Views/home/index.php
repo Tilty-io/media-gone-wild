@@ -76,6 +76,9 @@ $bgcolorPickerBaseParams = [
         'defaultDemoPhotoId' => $defaultDemoPhotoId,
         'bgcolorPickerBaseParams' => $bgcolorPickerBaseParams,
     ]) ?>
+    <?= view('home/partials/photo-transform-modal-script', [
+        'defaultDemoPhotoId' => $defaultDemoPhotoId,
+    ]) ?>
 <?= view('partials/footer') ?>
 
 

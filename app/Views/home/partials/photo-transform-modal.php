@@ -55,8 +55,14 @@ $initialModalUrl = site_url('photo') . '?' . http_build_query(['id' => $defaultD
             </label>
 
             <label class="form-control">
-                <span class="label-text text-sm">Qualité</span>
-                <input name="quality" type="number" min="1" max="100" step="1" value="85" class="input input-bordered">
+                <div class="flex items-center justify-between">
+                    <span class="label-text text-sm">Qualité</span>
+                    <span id="home-photo-transform-quality-value" class="font-mono text-sm text-primary">85</span>
+                </div>
+                <input id="home-photo-transform-quality" name="quality" type="range" min="1" max="100" step="1" value="85" class="range range-primary range-sm mt-2">
+                <div class="mt-1 flex justify-between px-1 text-[10px] opacity-50">
+                    <span>1</span><span>50</span><span>100</span>
+                </div>
             </label>
 
             <div class="form-control xl:col-span-2">
@@ -109,6 +115,21 @@ $initialModalUrl = site_url('photo') . '?' . http_build_query(['id' => $defaultD
                     >
                 </div>
                 <p id="home-photo-transform-status" class="mt-2 text-xs opacity-70" aria-live="polite"></p>
+            </div>
+
+            <div class="xl:col-span-4 grid gap-3 sm:grid-cols-2">
+                <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+                    <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide opacity-70">Photo originale</p>
+                    <div id="home-photo-transform-original-info" class="font-mono text-sm">
+                        <span class="opacity-40 text-xs">—</span>
+                    </div>
+                </div>
+                <div class="rounded-lg border border-base-300 bg-base-200 p-3">
+                    <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide opacity-70">Photo transformée</p>
+                    <div id="home-photo-transform-result-info" class="font-mono text-sm">
+                        <span class="opacity-40 text-xs">—</span>
+                    </div>
+                </div>
             </div>
 
             <div class="xl:col-span-4 sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-base-300 bg-base-100/95 p-3 backdrop-blur">
